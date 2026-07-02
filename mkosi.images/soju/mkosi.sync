@@ -1,0 +1,50 @@
+#!/bin/sh
+set -eu
+
+version=0.10.1
+archive="soju-$version.tar.gz"
+base_url="https://codeberg.org/emersion/soju/releases/download/v$version"
+sha256=78cfb809d6105b797b0af3c837906044a315a90c26e3e6a0bace68f5354c6a8b
+
+TARGET="$SRCDIR/mkosi.images/soju/src"
+GPG_KEY="$SRCDIR/mkosi.images/soju/emersion.gpg"
+
+if [ -e "$TARGET" ]; then
+    echo "soju: $TARGET exists, skipping"
+    exit
+fi
+
+if ! command -v go >/dev/null; then
+    echo "soju: go must be available on ths host for vendoring"
+    exit 1
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+curl --fail --location --output="$tmpdir/$archive" "$base_url/$archive"
+curl --fail --location --output="$tmpdir/$archive.sig" "$base_url/$archive.sig"
+
+if command -v sqop >/dev/null; then
+    sqop verify "$tmpdir/$archive.sig" "$GPG_KEY" < "$tmpdir/$archive"
+elif command -v gpgv >/dev/null && command -v gpg >/dev/null; then
+    gpg --dearmor < "$GPG_KEY" > "$tmpdir/emersion.gpg"
+    gpgv --homedir=/dev/null --keyring="$tmpdir/emersion.gpg" \
+        -- "$tmpdir/$archive.sig" "$tmpdir/$archive"
+else
+    echo "Unable to verify release with OpenPGP"
+fi
+
+(
+    cd "$tmpdir"
+    printf '%s  %s\n' "$sha256" "$archive" | sha256sum --check --status
+)
+
+mkdir -p "$TARGET"
+trap 'test -e "$TARGET/vendor/modules.txt" || rf -rf "$TARGET"' EXIT
+tar --extract --gunzip --file="$tmpdir/$archive" --directory="$TARGET" --strip-components=1
+
+cd "$TARGET"
+export GOCACHE="$tmpdir/go-cache"
+export GOMODCACHE="$tmpdir/go-mod-cache"
+go mod vendor

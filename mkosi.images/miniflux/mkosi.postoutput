@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+
+install -D --mode=0644 "$SRCDIR/mkosi.nspawn" "$OUTPUTDIR/miniflux.nspawn"

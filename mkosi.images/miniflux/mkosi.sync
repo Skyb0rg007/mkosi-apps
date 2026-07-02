@@ -1,0 +1,21 @@
+#!/bin/sh
+set -eu
+
+version=2.3.2
+deb="miniflux_${version}_amd64.deb"
+url="https://github.com/miniflux/v2/releases/download/$version/$deb"
+sha256=16c06c18cbaf6d565c7a38534c9913dce93def80eb43388beaa25a55145ae1dc
+
+if [ -e "$SRCDIR/mkosi.packages/$deb" ]; then
+    echo "miniflux: $deb exists, skipping"
+    exit
+fi
+
+mkdir -p "$SRCDIR/mkosi.packages"
+tmp="$SRCDIR/mkosi.packages/$deb.tmp"
+trap 'rm -f "$tmp"' EXIT
+
+curl --fail --location --output "$tmp" "$url"
+printf '%s  %s\n' "$sha256" "$tmp" | sha256sum --check --status
+
+mv "$tmp" "$SRCDIR/mkosi.packages/$deb"

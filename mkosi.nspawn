@@ -1,0 +1,19 @@
+[Exec]
+Boot=true
+ResolvConf=bind-uplink
+Timezone=bind
+Parameters= \
+    systemd.set_credential=passwd.plaintext-password.root: \
+    systemd.set_credential=tty.serial.hvc0.agetty.autologin:root \
+    systemd.set_credential=tty.serial.hvc0.login.noauth:yes \
+    systemd.set_credential=tty.console.agetty.autologin:root \
+    systemd.set_credential=tty.console.login.noauth:yes \
+    systemd.set_credential=tty.virtual.tty1.agetty.autologin:root \
+    systemd.set_credential=tty.virtual.tty1.login.noauth:yes \
+
+[Files]
+Volatile=yes
+# BindReadOnly=mkosi.output/debug-sysext:/run/extensions/debug-sysext
+
+[Network]
+Bridge=virbr0

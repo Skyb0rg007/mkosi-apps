@@ -1,0 +1,2 @@
+enable homebox.service
+enable homebox-secret.service

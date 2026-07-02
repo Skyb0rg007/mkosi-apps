@@ -1,0 +1,10 @@
+mkosi.output/**
+!mkosi.output/.gitkeep
+mkosi.cache/**
+!mkosi.cache/.gitkeep
+mkosi.packages/**
+!mkosi.packages/.gitkeep
+mkosi.tools
+mkosi.tools.manifest
+
+/apps

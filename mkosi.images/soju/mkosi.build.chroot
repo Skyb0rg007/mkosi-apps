@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+
+cd "$SRCDIR/mkosi.images/soju/src"
+
+make GOFLAGS="-mod=vendor -tags=libsqlite3"
+make install PREFIX="/usr"
