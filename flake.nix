@@ -41,6 +41,14 @@
               pkgs.dpkg
               pkgs.sequoia-sqop
             ];
+            # Nix exports SOURCE_DATE_EPOCH=315532800, which makes mkosi clamp
+            # every mtime in the images to 1980, /usr's included. Then no new
+            # version's /usr is newer than a machine's /etc/.updated, and
+            # ConditionNeedsUpdate= never reruns ldconfig.service and friends
+            # after an upgrade. As in ParticleOS, builds keep their own time.
+            shellHook = ''
+              unset SOURCE_DATE_EPOCH
+            '';
           };
         }
       );
