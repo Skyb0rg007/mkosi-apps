@@ -1,0 +1,19 @@
+#!/bin/sh
+# Normalize the modes of every ExtraTrees source in the checkout.
+#
+# mkosi copies ExtraTrees with the modes they have on disk, and a checkout
+# made under a restrictive umask (e.g. 0007) leaves files 0660 or 0640, which
+# would ship world-unreadable unit files and configuration in the images. Git
+# records only the executable bit, so derive the rest here: directories and
+# executables 0755, everything else 0644. Sync scripts all run before any
+# image is built, so this covers every image's trees.
+set -eu
+
+cd "$SRCDIR"
+
+for tree in mkosi.extra mkosi.images/*/mkosi.extra; do
+    [ -d "$tree" ] || continue
+    find "$tree" -type d -exec chmod 0755 {} +
+    find "$tree" -type f -perm -u+x -exec chmod 0755 {} +
+    find "$tree" -type f ! -perm -u+x -exec chmod 0644 {} +
+done
