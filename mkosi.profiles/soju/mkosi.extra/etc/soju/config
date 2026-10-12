@@ -1,11 +1,10 @@
 db sqlite3 /var/lib/soju/main.db
-listen ircs://
+# Plain text: TLS is up to a proxy in front, e.g. nginx's stream module as in
+# soju's contrib/nginx.md.
+listen irc+insecure://
 listen unix+admin://
 # Answers IRC servers' ident queries for soju's upstream connections, on port
 # 113, which they query on the address that a connection came from.
 listen ident://
 # WebSocket for gamja, behind nginx (/etc/nginx/sites-available/soju).
 listen http+unix:///run/soju/http.sock
-# From the credentials soju.tls-cert and soju.tls-key, or self-signed (see
-# soju-tls-selfsigned.service).
-tls /run/credentials/soju.service/soju.tls-cert /run/credentials/soju.service/soju.tls-key

@@ -1,19 +1,9 @@
 # gamja, and soju's WebSocket and file uploads, from soju's contrib/nginx.md.
 # soju listens on the socket as group www-data (see soju.service).
+# Plain HTTP: TLS is up to a proxy in front.
 server {
   listen 80 default_server;
   listen [::]:80 default_server;
-  return 301 https://$host$request_uri;
-}
-
-server {
-  listen 443 ssl default_server;
-  listen [::]:443 ssl default_server;
-
-  # From the credentials soju.tls-cert and soju.tls-key, or self-signed (see
-  # soju-tls-selfsigned.service).
-  ssl_certificate /run/credentials/nginx.service/soju.tls-cert;
-  ssl_certificate_key /run/credentials/nginx.service/soju.tls-key;
 
   location /socket {
     proxy_pass http://unix:/run/soju/http.sock:/socket;

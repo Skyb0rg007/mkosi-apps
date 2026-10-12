@@ -70,29 +70,23 @@ unless `miniflux.conf` says otherwise:
 
 ### soju
 
-soju listens on `ircs://` (port 6697). nginx serves the
-[gamja](https://codeberg.org/emersion/gamja) web client on port 443, redirects
-port 80 there, and proxies gamja's WebSocket to soju's `http+unix://` socket,
+soju listens for IRC in plain text on port 6667 (`irc+insecure://`). nginx
+serves the [gamja](https://codeberg.org/emersion/gamja) web client in plain
+HTTP on port 80 and proxies gamja's WebSocket to soju's `http+unix://` socket,
 as in soju's `contrib/nginx.md`. soju runs as group `www-data` so that nginx
 can connect to that socket.
 
-Both take their TLS certificate from the system credentials `soju.tls-cert`
-and `soju.tls-key` (PEM, the certificate with its chain), which each imports
-with `ImportCredential=`. Without them, `soju-tls-selfsigned.service` generates
-a self-signed certificate once, keeps it in `/var/lib/soju-tls/`, and offers it
-under the same names in `/run/credstore/`, which `ImportCredential=` searches
-after the system credentials. A new certificate takes effect when the
-container restarts. Credentials reach an installed machine as described in
-[miniflux credentials](#miniflux-credentials). `mkosi boot` passes each file
-in a directory as a credential named after the file:
-
-    mkosi --profile=soju --credential=tls/ boot  # tls/soju.tls-cert, tls/soju.tls-key
+Neither does TLS: that is up to a proxy in front, which holds the certificate,
+e.g. nginx with the `stream` server from `contrib/nginx.md` for IRC and an
+HTTPS server for gamja. The proxy must not send the PROXY protocol, which soju
+only accepts from addresses listed in `accept-proxy-ip`, so soju sees the
+proxy's address as every client's.
 
 soju also answers ident queries on port 113 with an opaque ident per soju
-user, so that IRC servers can tell its users apart, e.g. to ban one. A server queries the address the
-connection came from, which for a container is the host, so this only works
-when the host forwards port 113: as root with `Port=` from `soju.nspawn`, and
-with the host's firewall accepting it. The forwarded query keeps the server's
+user, so that IRC servers can tell its users apart, e.g. to ban one. A server
+queries the address the connection came from, which for a container is the
+host, so this only works when the host forwards port 113: as root with `Port=`
+from `soju.nspawn`, and with the host's firewall accepting it. The forwarded query keeps the server's
 address, and the masquerading keeps soju's source port unless it collides,
 which is what soju matches a query against.
 
