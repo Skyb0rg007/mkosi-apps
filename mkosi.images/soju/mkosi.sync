@@ -1,4 +1,9 @@
 #!/bin/sh
+# Fetch step: the only part of the soju build that touches the network.
+#
+# Downloads and verifies the release tarball, then downloads its Go modules into
+# a shared module cache, verified against the go.sum the tarball ships. The
+# build script compiles offline from that cache (see mkosi.build.chroot).
 set -eu
 
 version=0.10.1
@@ -9,42 +14,59 @@ sha256=78cfb809d6105b797b0af3c837906044a315a90c26e3e6a0bace68f5354c6a8b
 TARGET="$SRCDIR/mkosi.images/soju/src"
 GPG_KEY="$SRCDIR/mkosi.images/soju/emersion.gpg"
 
-if [ -e "$TARGET" ]; then
-    echo "soju: $TARGET exists, skipping"
-    exit
-fi
-
 if ! command -v go >/dev/null; then
-    echo "soju: go must be available on ths host for vendoring"
+    echo "soju: go must be available in the tools tree (ToolsTreePackages=golang-go)"
     exit 1
 fi
 
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
-curl --fail --location --output="$tmpdir/$archive" "$base_url/$archive"
-curl --fail --location --output="$tmpdir/$archive.sig" "$base_url/$archive.sig"
-
-if command -v sqop >/dev/null; then
-    sqop verify "$tmpdir/$archive.sig" "$GPG_KEY" < "$tmpdir/$archive"
-elif command -v gpgv >/dev/null && command -v gpg >/dev/null; then
-    gpg --dearmor < "$GPG_KEY" > "$tmpdir/emersion.gpg"
-    gpgv --homedir=/dev/null --keyring="$tmpdir/emersion.gpg" \
-        -- "$tmpdir/$archive.sig" "$tmpdir/$archive"
+if [ -e "$TARGET/go.mod" ]; then
+    echo "soju: $TARGET exists, skipping download"
 else
-    echo "Unable to verify release with OpenPGP"
+    curl --fail --location --output "$tmpdir/$archive" "$base_url/$archive"
+    curl --fail --location --output "$tmpdir/$archive.sig" "$base_url/$archive.sig"
+
+    if command -v sqop >/dev/null; then
+        sqop verify "$tmpdir/$archive.sig" "$GPG_KEY" < "$tmpdir/$archive"
+    elif command -v sqv >/dev/null; then
+        sqv --keyring "$GPG_KEY" "$tmpdir/$archive.sig" "$tmpdir/$archive"
+    elif command -v gpgv >/dev/null && command -v gpg >/dev/null; then
+        gpg --dearmor < "$GPG_KEY" > "$tmpdir/emersion.gpg"
+        gpgv --homedir=/dev/null --keyring="$tmpdir/emersion.gpg" \
+            -- "$tmpdir/$archive.sig" "$tmpdir/$archive"
+    else
+        echo "soju: no OpenPGP verifier (sqop, sqv or gpgv) available"
+        exit 1
+    fi
+
+    (
+        cd "$tmpdir"
+        printf '%s  %s\n' "$sha256" "$archive" | sha256sum --check --status
+    )
+
+    # Extract beside the target and move it into place, so an interrupted run
+    # never leaves a partial tree that the check above would mistake for done.
+    rm -rf "$tmpdir/src"
+    mkdir "$tmpdir/src"
+    tar --extract --gunzip --file="$tmpdir/$archive" --directory="$tmpdir/src" --strip-components=1
+    rm -rf "$TARGET"
+    mv "$tmpdir/src" "$TARGET"
 fi
 
-(
-    cd "$tmpdir"
-    printf '%s  %s\n' "$sha256" "$archive" | sha256sum --check --status
-)
-
-mkdir -p "$TARGET"
-trap 'test -e "$TARGET/vendor/modules.txt" || rf -rf "$TARGET"' EXIT
-tar --extract --gunzip --file="$tmpdir/$archive" --directory="$TARGET" --strip-components=1
-
+# Always run: with every module already cached this does no network access,
+# and it completes a cache that an earlier run left partial. Downloads are
+# checked against go.sum, and the checksum database for anything go.sum does
+# not pin; the offline build's -mod=readonly then rejects those.
+modcache="$SRCDIR/mkosi.cache/go-mod"
 cd "$TARGET"
-export GOCACHE="$tmpdir/go-cache"
-export GOMODCACHE="$tmpdir/go-mod-cache"
-go mod vendor
+GOMODCACHE="$modcache" \
+    GOCACHE="$tmpdir/go-build" \
+    GOFLAGS=-modcacherw \
+    GOTOOLCHAIN=local \
+    go mod download
+
+# The build only reads cache/download, the proxy layout, and re-extracts from
+# it. The extracted trees beside it are several times its size, so drop them.
+find "$modcache" -mindepth 1 -maxdepth 1 ! -name cache -exec rm -rf {} +

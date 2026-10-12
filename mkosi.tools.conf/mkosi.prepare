@@ -1,0 +1,14 @@
+#!/bin/sh
+# Ship /etc/static -> /run/systemd/resolve in the default tools tree.
+#
+# On a NixOS host /etc/resolv.conf is a symlink to /etc/static/resolv.conf, and
+# mkosi binds that symlink, not its target, into network-enabled sandboxes. It
+# recreates /etc/static there only if the tools tree has one, so without this
+# the symlink dangles and statically linked tools such as go, which read
+# nothing but /etc/resolv.conf, cannot resolve names. mkosi binds
+# /run/systemd/resolve into the same sandboxes. Other hosts never look here.
+set -eu
+
+[ "$1" = final ] || exit 0
+
+ln -sfn /run/systemd/resolve "$BUILDROOT/etc/static"
