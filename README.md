@@ -31,3 +31,33 @@ script runs without network and reads only that cache. For Go (`soju`) the
 cache is go's module proxy layout, served to the build as `GOPROXY=file://…`
 with `-mod=readonly`. The tools tree's `golang-go` fetches (sync scripts run
 there); the image's own `golang-go` from `BuildPackages=` compiles.
+
+## Rootless containers
+
+The top-level image is built as a directory (`Format=directory`) owned by the
+systemd foreign UID range, which is what unprivileged
+`systemd-nspawn --directory=` requires. Build and boot need no privileges:
+
+    mkosi build
+    systemd-nspawn --directory=mkosi.output/image --boot
+
+`ForeignUIDRange=yes` makes mkosi shift the finished tree itself with
+`systemd-dissect --shift`, inside a user namespace `systemd-nsresourced` maps
+the foreign range into. No polkit check is involved, and the next
+`mkosi -f build` removes the foreign-owned tree on its own. The shift needs
+systemd 258 or newer in the tools tree, which is why that tree tracks Debian
+testing while the images stay on trixie.
+
+### Why not a disk image
+
+`systemd-nspawn --image=` on a `Format=disk` output has to go through
+`systemd-mountfsd`, which fails unprivileged with
+`io.systemd.InteractiveAuthenticationRequired` — an admin prompt. Only the
+foreign-owned directory avoids that.
+
+### Every file is owned by image root
+
+mkosi builds in single-UID mode here, so every inode is owned by the invoking
+user before the shift and by foreign UID 0 after it. Files that a package would
+install owned by a service user land as root instead; use `StateDirectory=` or
+tmpfiles `z`/`Z` where that matters.
