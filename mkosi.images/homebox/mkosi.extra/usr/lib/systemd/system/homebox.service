@@ -17,7 +17,7 @@ Environment=HBOX_STORAGE_CONN_STRING=file:///var/lib/homebox
 Environment=HBOX_STORAGE_PREFIX_PATH=uploads
 Environment=HBOX_DATABASE_SQLITE_PATH=/var/lib/homebox/homebox.db?_pragma=busy_timeout=999&_pragma=journal_mode=WAL&_fk=1&_time_format=sqlite
 EnvironmentFile=-/etc/homebox.conf
-EnvironmentFile=/etc/homebox/secret.env
+EnvironmentFile=/var/lib/homebox-secret/secret.env
 Restart=always
 RestartSec=5
 
