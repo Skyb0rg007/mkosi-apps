@@ -160,8 +160,7 @@ needs a foreign-owned directory and is mounted writable by systemd 261 anyway.
 `systemd-confext` in turn fails to merge over the bind mount that
 `ResolvConf=bind-uplink` puts on `/etc/resolv.conf`, so these two machines'
 settings have `ResolvConf=off`, and the container's systemd-resolved gets DNS
-servers over DHCP. With the confext merged, the container has no
-`/etc/localtime` either, so it runs on UTC.
+servers over DHCP.
 
 ## Running the apps
 
