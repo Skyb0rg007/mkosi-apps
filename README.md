@@ -313,6 +313,29 @@ testing while the images stay on trixie.
 `io.systemd.InteractiveAuthenticationRequired` — an admin prompt. Only the
 foreign-owned directory avoids that.
 
+### /usr is enough to boot
+
+Following [ParticleOS](https://github.com/systemd/particleos), the images'
+`/usr` carries everything needed to boot with an empty `/etc`:
+
+- `mkosi.finalize` copies each image's `/etc` to `/usr/share/factory/etc`, and
+  `tmpfiles.d/etc.conf` in minimal-base, plus a file per app for its own
+  configuration, symlinks entries of it into `/etc`. Being links, they follow
+  the image on upgrades; replacing one with a copy customizes it.
+- `systemd-sysusers` creates the users, Debian's `www-data` included.
+- The first boot applies the presets, which also switch on units that
+  Debian's packages only enable in their postinst; `20-debian.preset` turns
+  the unwanted ones off again.
+- `systemd-firstboot` does not prompt, since no one is at an app's console.
+- Each build's `/usr` keeps its build time, so a new version's is newer than a
+  machine's `/etc/.updated`, and `ConditionNeedsUpdate=` reruns
+  `ldconfig.service` and the like on the first boot after an upgrade. The dev
+  shell unsets the `SOURCE_DATE_EPOCH` that Nix exports, which would clamp
+  every build to 1980.
+
+On an image's own, read-only `/etc` all of this is a no-op: it is already
+populated.
+
 ### Every file is owned by image root
 
 mkosi builds in single-UID mode here, so every inode is owned by the invoking

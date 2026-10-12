@@ -1,0 +1,6 @@
+# Debian enables units from the packages' postinst instead of through presets,
+# so on a first boot preset-all falls back to systemd's "enable" default and
+# switches on more than a Debian installation would have (as in ParticleOS).
+
+# The images keep no dpkg database to back up (CleanPackageMetadata=yes).
+disable dpkg-db-backup.timer

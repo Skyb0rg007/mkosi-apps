@@ -1,0 +1,10 @@
+#!/bin/sh
+# From ParticleOS: capture the entirety of /etc in /usr/share/factory/etc, so
+# that /usr alone is enough to boot. With an empty /etc, systemd-tmpfiles
+# symlinks individual entries from the factory into /etc (see etc.conf in
+# minimal-base), systemd-sysusers creates the users, and the first boot applies
+# the presets. The factory keeps files that packages already ship there.
+set -e
+
+mkdir -p "$BUILDROOT/usr/share/factory/"
+cp --archive --no-target-directory --update=none "$BUILDROOT/etc" "$BUILDROOT/usr/share/factory/etc"
