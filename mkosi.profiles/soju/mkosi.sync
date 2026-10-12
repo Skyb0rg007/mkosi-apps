@@ -4,6 +4,7 @@
 # Downloads and verifies the release tarball, then downloads its Go modules into
 # a shared module cache, verified against the go.sum the tarball ships. The
 # build script compiles offline from that cache (see mkosi.build.chroot).
+# Also downloads gamja with its dependencies, which the build script installs.
 set -eu
 
 # Upstream version: mkosi.version without its "-<revision>" suffix. The
@@ -57,6 +58,52 @@ else
     echo "$version" > "$tmpdir/src/.mkosi-version"
     rm -rf "$TARGET"
     mv "$tmpdir/src" "$TARGET"
+fi
+
+# gamja, the web client nginx serves. Its own version: bumping it is an
+# image-only change. The release is unsigned, so the checksum is all there is.
+gamja_version=1.0.0-beta.11
+gamja_archive="gamja-$gamja_version.tar.gz"
+gamja_url="https://codeberg.org/emersion/gamja/releases/download/v$gamja_version/$gamja_archive"
+gamja_sha256=10c37f254028bbb5b3662c659dec8a099e3ed37b8ec90161e12003b8b8b4c930
+GAMJA="$SRCDIR/mkosi.profiles/soju/gamja"
+
+if [ "$(cat "$GAMJA/.mkosi-version" 2>/dev/null)" = "$gamja_version" ]; then
+    echo "soju: $GAMJA is $gamja_version, skipping download"
+else
+    curl --fail --location --output "$tmpdir/$gamja_archive" "$gamja_url"
+    (
+        cd "$tmpdir"
+        printf '%s  %s\n' "$gamja_sha256" "$gamja_archive" | sha256sum --check --status
+    )
+
+    rm -rf "$tmpdir/gamja"
+    mkdir "$tmpdir/gamja"
+    tar --extract --gunzip --file="$tmpdir/$gamja_archive" --directory="$tmpdir/gamja" --strip-components=1
+
+    # gamja runs unbundled from its sources and node_modules/, and its runtime
+    # dependencies are plain JavaScript, so there is no build: fetch the ones
+    # package-lock.json lists outside devDependencies, checked against the
+    # lockfile's integrity hashes, without npm.
+    jq -r '.packages | to_entries[]
+        | select(.key != "" and (.value.dev | not))
+        | [.key, .value.resolved, .value.integrity] | @tsv' \
+        "$tmpdir/gamja/package-lock.json" > "$tmpdir/gamja-packages"
+    while IFS="$(printf '\t')" read -r path url integrity; do
+        case "$integrity" in
+        sha512-*) ;;
+        *) echo "soju: gamja: $path: unsupported integrity $integrity"; exit 1 ;;
+        esac
+        sha512="$(printf '%s' "${integrity#sha512-}" | base64 --decode | od -An -v -tx1 | tr -d ' \n')"
+        curl --fail --location --output "$tmpdir/package.tgz" "$url"
+        printf '%s  %s\n' "$sha512" "$tmpdir/package.tgz" | sha512sum --check --status
+        mkdir -p "$tmpdir/gamja/$path"
+        tar --extract --gunzip --file="$tmpdir/package.tgz" --directory="$tmpdir/gamja/$path" --strip-components=1
+    done < "$tmpdir/gamja-packages"
+
+    echo "$gamja_version" > "$tmpdir/gamja/.mkosi-version"
+    rm -rf "$GAMJA"
+    mv "$tmpdir/gamja" "$GAMJA"
 fi
 
 # Always run: with every module already cached this does no network access,

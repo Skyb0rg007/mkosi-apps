@@ -1,0 +1,41 @@
+# gamja, and soju's WebSocket and file uploads, from soju's contrib/nginx.md.
+# soju listens on the socket as group www-data (see soju.service).
+server {
+  listen 80 default_server;
+  listen [::]:80 default_server;
+  return 301 https://$host$request_uri;
+}
+
+server {
+  listen 443 ssl default_server;
+  listen [::]:443 ssl default_server;
+
+  # From the credentials soju.tls-cert and soju.tls-key, or self-signed (see
+  # soju-tls-selfsigned.service).
+  ssl_certificate /run/credentials/nginx.service/soju.tls-cert;
+  ssl_certificate_key /run/credentials/nginx.service/soju.tls-key;
+
+  location /socket {
+    proxy_pass http://unix:/run/soju/http.sock:/socket;
+    proxy_read_timeout 600s;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "Upgrade";
+    proxy_set_header Forwarded ""; # prevent clients from spoofing this header, which takes precedence over X-Forwarded-*
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Host $host;
+  }
+
+  # Needs a file-upload directive in /etc/soju/config.
+  location /uploads {
+    proxy_pass http://unix:/run/soju/http.sock:/uploads;
+    proxy_set_header Forwarded ""; # prevent clients from spoofing this header, which takes precedence over X-Forwarded-*
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Host $host;
+    client_max_body_size 0;
+  }
+
+  root /usr/share/gamja/;
+}

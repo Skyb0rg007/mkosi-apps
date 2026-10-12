@@ -1,0 +1,21 @@
+# soju and nginx import their certificate as the credentials soju.tls-cert and
+# soju.tls-key, which the system's credentials provide. Without them, this
+# offers a self-signed certificate under the same names in /run/credstore/,
+# which ImportCredential= only searches after the system's credentials.
+[Unit]
+Description=Self-signed TLS certificate for soju and nginx
+ConditionCredential=!soju.tls-cert
+ConditionCredential=!soju.tls-key
+Before=soju.service nginx.service
+
+[Service]
+Type=oneshot
+UMask=0077
+# Generated once, so that clients that pinned it keep connecting. The key is
+# written before the certificate, so the certificate existing means both do.
+StateDirectory=soju-tls
+WorkingDirectory=/var/lib/soju-tls
+ExecStart=/bin/sh -c 'test -e tls.crt || { openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -noenc -days 3650 -subj "/CN=%H" -addext "subjectAltName=DNS:%H" -keyout tls.key -out tls.crt.tmp && mv tls.crt.tmp tls.crt; }'
+ExecStart=mkdir -p /run/credstore
+ExecStart=cp tls.crt /run/credstore/soju.tls-cert
+ExecStart=cp tls.key /run/credstore/soju.tls-key

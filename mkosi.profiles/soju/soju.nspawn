@@ -14,3 +14,8 @@ Timezone=bind
 VirtualEthernet=yes
 # /etc/soju/config listens on ircs:// without a port, i.e. 6697.
 Port=tcp:6697:6697
+# ident: IRC servers query the host, which soju's connections come from.
+Port=tcp:113:113
+# nginx, serving gamja, and redirecting HTTP to it.
+Port=tcp:443:443
+Port=tcp:80:80

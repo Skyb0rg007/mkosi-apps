@@ -1,6 +1,11 @@
 db sqlite3 /var/lib/soju/main.db
 listen ircs://
 listen unix+admin://
-# Generated self-signed on first start (see soju.service); point this at a
-# real certificate to replace it.
-tls /var/lib/soju/tls.crt /var/lib/soju/tls.key
+# Answers IRC servers' ident queries for soju's upstream connections, on port
+# 113, which they query on the address that a connection came from.
+listen ident://
+# WebSocket for gamja, behind nginx (/etc/nginx/sites-available/soju).
+listen http+unix:///run/soju/http.sock
+# From the credentials soju.tls-cert and soju.tls-key, or self-signed (see
+# soju-tls-selfsigned.service).
+tls /run/credentials/soju.service/soju.tls-cert /run/credentials/soju.service/soju.tls-key

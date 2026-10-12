@@ -2,8 +2,8 @@
 Description=soju IRC bouncer service
 Documentation=https://soju.im/
 Documentation=man:soju(1) man:sojuctl(1)
-Wants=network-online.target
-After=network-online.target
+Wants=network-online.target soju-tls-selfsigned.service
+After=network-online.target soju-tls-selfsigned.service
 
 [Service]
 Type=simple
@@ -11,11 +11,12 @@ DynamicUser=yes
 StateDirectory=soju
 ConfigurationDirectory=soju
 RuntimeDirectory=soju
-# AmbientCapabilities=CAP_NET_BIND_SERVICE
-# /etc/soju/config listens on ircs://, which soju refuses to start without a
-# certificate. Generate a self-signed one on first start; the key is written
-# before the certificate, so the certificate existing means both do.
-ExecStartPre=/bin/sh -c 'test -e /var/lib/soju/tls.crt || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -noenc -days 3650 -subj "/CN=%H" -addext "subjectAltName=DNS:%H" -keyout /var/lib/soju/tls.key -out /var/lib/soju/tls.crt'
+# soju makes /run/soju/http.sock group-writable; the group lets nginx connect.
+Group=www-data
+# For ident:// on port 113.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+# The certificate for /etc/soju/config (see soju-tls-selfsigned.service).
+ImportCredential=soju.tls-*
 ExecStart=/usr/bin/soju
 ExecReload=/usr/bin/kill -HUP $MAINPID
 Restart=on-failure

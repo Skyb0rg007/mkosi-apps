@@ -20,3 +20,10 @@ make install PREFIX="/usr"
 # soju.service uses DynamicUser=, so systemd owns /var/lib/soju; a copy shipped
 # in the image only triggers a migration warning on first start.
 rmdir "$DESTDIR/var/lib/soju"
+
+# gamja needs no build. Its files come out of the sync step with the checkout's
+# umask, so set modes that nginx's www-data can read.
+cp -R "$SRCDIR/mkosi.profiles/soju/gamja" "$DESTDIR/usr/share/gamja"
+rm "$DESTDIR/usr/share/gamja/.mkosi-version"
+find "$DESTDIR/usr/share/gamja" -type d -exec chmod 0755 {} +
+find "$DESTDIR/usr/share/gamja" -type f -exec chmod 0644 {} +

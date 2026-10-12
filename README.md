@@ -68,6 +68,44 @@ unless `miniflux.conf` says otherwise:
         --credential=miniflux.admin-password=… \
         boot
 
+### soju
+
+soju listens on `ircs://` (port 6697). nginx serves the
+[gamja](https://codeberg.org/emersion/gamja) web client on port 443, redirects
+port 80 there, and proxies gamja's WebSocket to soju's `http+unix://` socket,
+as in soju's `contrib/nginx.md`. soju runs as group `www-data` so that nginx
+can connect to that socket.
+
+Both take their TLS certificate from the system credentials `soju.tls-cert`
+and `soju.tls-key` (PEM, the certificate with its chain), which each imports
+with `ImportCredential=`. Without them, `soju-tls-selfsigned.service` generates
+a self-signed certificate once, keeps it in `/var/lib/soju-tls/`, and offers it
+under the same names in `/run/credstore/`, which `ImportCredential=` searches
+after the system credentials. A new certificate takes effect when the
+container restarts. Credentials reach an installed machine as described in
+[miniflux credentials](#miniflux-credentials). `mkosi boot` passes each file
+in a directory as a credential named after the file:
+
+    mkosi --profile=soju --credential=tls/ boot  # tls/soju.tls-cert, tls/soju.tls-key
+
+soju also answers ident queries on port 113 with an opaque ident per soju
+user, so that IRC servers can tell its users apart, e.g. to ban one. A server queries the address the
+connection came from, which for a container is the host, so this only works
+when the host forwards port 113: as root with `Port=` from `soju.nspawn`, and
+with the host's firewall accepting it. The forwarded query keeps the server's
+address, and the masquerading keeps soju's source port unless it collides,
+which is what soju matches a query against.
+
+Users are created with `sojuctl`:
+
+    machinectl [--user] shell soju /usr/bin/sojuctl user create -username … -password …
+
+gamja's release is its unbundled source, which runs as is once its
+`node_modules/` exist. The sync script fetches the runtime dependencies that
+its `package-lock.json` pins, checked against the lockfile's hashes, so the
+image needs neither npm nor a build. gamja's version is pinned in the sync
+script, separately from soju's.
+
 ## Running the apps
 
 `bin/install-app` installs a build as its app's machine, a mount stack
