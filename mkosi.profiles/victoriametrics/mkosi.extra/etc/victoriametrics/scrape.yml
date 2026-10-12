@@ -1,4 +1,3 @@
 # Targets for VictoriaMetrics to scrape, in Prometheus' format. Replace this
-# file through the confext in /var/lib/confexts/victoriametrics/ (see the
-# README).
+# file through a confext (see the README).
 scrape_configs: []

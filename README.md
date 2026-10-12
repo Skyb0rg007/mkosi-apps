@@ -137,21 +137,24 @@ scripts; upstream does not sign them. They build with a newer Go than trixie's.
 
 The image's `/etc` is read-only, so victoriametrics and victorialogs take
 their configuration from a configuration extension, which `systemd-confext`
-merges over `/etc` on boot. The image sets up an empty one as a directory in
-the machine's `/var`, so it survives upgrades; files under its `etc/` replace
-the image's:
+merges over `/etc` on boot; files under its `etc/` replace the image's. The
+images set none up. One way is a directory in the machine's `/var`, which
+survives upgrades; an extension needs a release file whose name matches its
+own:
 
     machinectl [--user] shell victoriametrics
-    cd /var/lib/confexts/victoriametrics/etc/victoriametrics
-    # edit scrape.yml, rules/*.yml, ...
+    d=/var/lib/confexts/victoriametrics
+    mkdir -p $d/etc/extension-release.d $d/etc/victoriametrics
+    echo ID=_any > $d/etc/extension-release.d/extension-release.victoriametrics
+    # edit $d/etc/victoriametrics/scrape.yml, rules/*.yml, ...
     systemd-confext refresh
     systemctl reload victoria-metrics  # or restart, or start vmalert, ...
 
-On a new machine, the first boot creates the extension only after
-`systemd-confext` has run, so the first edit needs the `refresh`. Secrets can
-still come as system credentials named `victoriametrics.*` or
-`victorialogs.*`, which the services import, for flags and config fields that
-take a file path, e.g. `/run/credentials/vmalert.service/victoriametrics.token`.
+`systemd-confext` also looks in `/run/confexts/`, and takes `.raw` disk
+images as well as directories. Secrets can still come as system credentials
+named `victoriametrics.*` or `victorialogs.*`, which the services import, for
+flags and config fields that take a file path, e.g.
+`/run/credentials/vmalert.service/victoriametrics.token`.
 
 The alternatives do not work rootless: a `BindReadOnly=` from the host fails
 under `PrivateUsers=managed` (nspawn cannot clone a host directory from
