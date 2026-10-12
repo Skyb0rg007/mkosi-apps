@@ -13,4 +13,5 @@ Timezone=bind
 
 [Network]
 VirtualEthernet=yes
-Port=tcp:8080:8080
+# HTTP on the host's port 80; Miniflux listens on 8080.
+Port=tcp:80:8080

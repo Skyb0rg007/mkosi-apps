@@ -161,6 +161,12 @@ owned by the foreign UID range; as root `rm -rf` deletes one, otherwise:
   root, it forwards connections to the host's addresses, but not to
   `127.0.0.0/8`; the host side of the veth needs configuring, e.g. by
   systemd-networkd's `80-container-ve.network`.
+- The settings forward each service's standard port, e.g. 80 for HTTP and
+  113 for ident, to the port the app listens on in the container, which is
+  unprivileged where it can be (homebox 3000, miniflux 8080, soju's ident
+  8113). `<app>._dhcp` reaches the container itself, so on those ports. Only
+  one running machine can have a given host port, so homebox, miniflux and
+  soju, which all forward 80, cannot all be forwarded at once.
 
 ### miniflux credentials
 
