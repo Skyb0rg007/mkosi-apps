@@ -16,3 +16,7 @@ cd "$SRCDIR/mkosi.images/soju/src"
 
 make
 make install PREFIX="/usr"
+
+# soju.service uses DynamicUser=, so systemd owns /var/lib/soju; a copy shipped
+# in the image only triggers a migration warning on first start.
+rmdir "$DESTDIR/var/lib/soju"

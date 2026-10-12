@@ -12,6 +12,10 @@ StateDirectory=soju
 ConfigurationDirectory=soju
 RuntimeDirectory=soju
 # AmbientCapabilities=CAP_NET_BIND_SERVICE
+# /etc/soju/config listens on ircs://, which soju refuses to start without a
+# certificate. Generate a self-signed one on first start; the key is written
+# before the certificate, so the certificate existing means both do.
+ExecStartPre=/bin/sh -c 'test -e /var/lib/soju/tls.crt || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -noenc -days 3650 -subj "/CN=%H" -addext "subjectAltName=DNS:%H" -keyout /var/lib/soju/tls.key -out /var/lib/soju/tls.crt'
 ExecStart=/usr/bin/soju
 ExecReload=/usr/bin/kill -HUP $MAINPID
 Restart=on-failure

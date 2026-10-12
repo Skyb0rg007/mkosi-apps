@@ -1,0 +1,6 @@
+db sqlite3 /var/lib/soju/main.db
+listen ircs://
+listen unix+admin://
+# Generated self-signed on first start (see soju.service); point this at a
+# real certificate to replace it.
+tls /var/lib/soju/tls.crt /var/lib/soju/tls.key
