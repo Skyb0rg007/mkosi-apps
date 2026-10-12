@@ -3,15 +3,12 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
-    skyenet.url = "github:Skyb0rg007/packages?dir=NixOS";
-    skyenet.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs =
     {
       self,
       nixpkgs,
-      skyenet,
     }:
     let
       inherit (nixpkgs) lib;
@@ -23,7 +20,6 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          skyenetPkgs = skyenet.legacyPackages.${system};
         in
         {
           mkosiFhs = pkgs.buildFHSEnv {
@@ -40,7 +36,7 @@
               pkgs.e2fsprogs
               pkgs.sequoia-sqop
               pkgs.go
-              skyenetPkgs.debian-archive-keyring
+              pkgs.debian-archive-keyring
             ];
             profile = ''
               export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
@@ -60,6 +56,7 @@
           default = pkgs.mkShellNoCC {
             packages = [
               self.packages.${system}.mkosiFhs
+              pkgs.python3 # scripts/foreign-shift.py
               pkgs.nixfmt
               pkgs.treefmt
               pkgs.debian-devscripts
