@@ -11,9 +11,11 @@ Parameters= \
     systemd.set_credential=tty.virtual.tty1.agetty.autologin:root \
     systemd.set_credential=tty.virtual.tty1.login.noauth:yes \
 
+# No Volatile=: it discards app state on every container restart.
+# BindReadOnly= is privileged, so it only applies from /etc/systemd/nspawn/.
 [Files]
-Volatile=yes
 # BindReadOnly=mkosi.output/debug-sysext:/run/extensions/debug-sysext
 
-[Network]
-Bridge=virbr0
+# No [Network] section: nspawn ignores all of it from a file next to the image
+# ("not trusted"). Rootless, pass --network-veth or --private-network instead;
+# Bridge= needs privileges either way.
