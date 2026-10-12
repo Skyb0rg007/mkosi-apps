@@ -66,6 +66,86 @@ unless `miniflux.conf` says otherwise:
         --credential=miniflux.admin-password=… \
         boot
 
+## Running as a system service
+
+Each app has an example `mkosi.profiles/<app>/<app>.nspawn` for running it as
+root under `systemd-nspawn@<app>.service`. The machine is a mount stack
+([systemd.mstack(7)](https://www.freedesktop.org/software/systemd/man/latest/systemd.mstack.html)),
+which nspawn finds by machine name like any other image:
+
+    /var/lib/machines/soju.mstack/
+    ├── layer@0.v/layer@0_0.10.1-1/   build outputs, read-only, newest is used
+    ├── layer@0.v/layer@0_0.10.2-1/
+    ├── layer@1/                      empty, see below
+    └── bind@var/                     the container's /var: all state
+
+Everything in it is owned by the foreign UID range, like the build outputs:
+
+    F=2147352576
+    install -d /var/lib/machines/soju.mstack/layer@0.v
+    install -d -o $F -g $F /var/lib/machines/soju.mstack/layer@1 \
+        /var/lib/machines/soju.mstack/bind@var
+    cp -a mkosi.output/soju_0.10.1-1 \
+        /var/lib/machines/soju.mstack/layer@0.v/layer@0_0.10.1-1
+    cp mkosi.profiles/soju/soju.nspawn /etc/systemd/nspawn/  # then set MachineID=
+    systemctl enable --now systemd-nspawn@soju.service
+
+    # Upgrade
+    cp -a mkosi.output/soju_0.10.2-1 \
+        /var/lib/machines/soju.mstack/layer@0.v/layer@0_0.10.2-1
+    systemctl restart systemd-nspawn@soju.service
+
+Rolling back is removing the newest version and restarting. The apps migrate
+their own data on start, so a rollback past a schema change needs a backup of
+`bind@var`.
+
+- The versions must be real directories: `layer@0.v/` ignores symlinks.
+- `layer@1/` keeps the image read-only. A single layer would be bind mounted
+  as the root, which systemd 261 leaves writable even though it lists it as
+  read-only, so the container could change the image. Two layers become an
+  overlayfs without a writable layer, which is read-only.
+- `PrivateUsers=managed`, which `.mstack/` requires, takes the container's
+  UID range from `systemd-nsresourced`. `systemd-mountfsd` maps the
+  foreign-owned directories onto it, so `bind@var` stays foreign-owned no
+  matter which range a boot gets.
+- Copy outputs that `mkosi boot` has not run: it boots the output directory
+  itself and leaves state behind in it, such as `/etc/machine-id`.
+- Users must keep their IDs across image versions. `StateDirectory=` re-owns
+  its directory when they change, but nothing re-owns PostgreSQL's data.
+- With the root read-only, the machine ID comes from `MachineID=`. Without
+  it, every boot gets a new one, and with it a new journal directory.
+- A settings file in `/etc/systemd/nspawn/` is used instead of the one mkosi
+  writes next to the output from `mkosi.nspawn`, so its root autologin does not
+  apply. `machinectl shell <app>` gives a root shell.
+- `Port=` forwards connections to the host's addresses, but not to
+  `127.0.0.0/8`. The host side of the veth needs configuring, e.g. by
+  systemd-networkd's `80-container-ve.network`.
+
+### miniflux credentials
+
+`.nspawn` files cannot pass credentials, and nspawn forwards only those named
+with `--load-credential=`, so miniflux's go in a drop-in that repeats the
+unit's `ExecStart=` (here systemd 261's):
+
+    # /etc/systemd/system/systemd-nspawn@miniflux.service.d/credentials.conf
+    [Service]
+    ImportCredential=miniflux.*
+    ExecStart=
+    ExecStart=systemd-nspawn --quiet --keep-unit --boot --link-journal=try-guest \
+            --network-veth -U --settings=override --machine=%i \
+            --load-credential=miniflux.admin-username:miniflux.admin-username \
+            --load-credential=miniflux.admin-password:miniflux.admin-password
+
+`ImportCredential=` reads them from `/etc/credstore/`, or encrypted from
+`/etc/credstore.encrypted/`:
+
+    systemd-creds encrypt --name=miniflux.admin-password - \
+        /etc/credstore.encrypted/miniflux.admin-password
+
+A relative `--load-credential=` path names one of the unit's own credentials.
+List only credentials that exist: a missing one stops the container from
+starting.
+
 ## Host setup
 
 mkosi bootstraps its Debian tools tree with the host's apt, which reads the

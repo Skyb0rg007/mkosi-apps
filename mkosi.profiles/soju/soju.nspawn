@@ -1,0 +1,16 @@
+# Settings for systemd-nspawn@soju.service, installed as
+# /etc/systemd/nspawn/soju.nspawn. The machine is /var/lib/machines/soju.mstack/;
+# see "Running as a system service" in the README.
+[Exec]
+# .mstack/ machines require a user namespace from systemd-nsresourced.
+PrivateUsers=managed
+ResolvConf=bind-uplink
+Timezone=bind
+# The root is read-only, so a stable machine ID has to come from here. Set one
+# per host from systemd-id128 new.
+#MachineID=
+
+[Network]
+VirtualEthernet=yes
+# /etc/soju/config listens on ircs:// without a port, i.e. 6697.
+Port=tcp:6697:6697

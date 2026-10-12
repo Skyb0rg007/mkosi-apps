@@ -1,0 +1,16 @@
+# Settings for systemd-nspawn@miniflux.service, installed as
+# /etc/systemd/nspawn/miniflux.nspawn. The machine is
+# /var/lib/machines/miniflux.mstack/; see "Running as a system service" in the
+# README. Credentials cannot be set here; the README shows a unit drop-in.
+[Exec]
+# .mstack/ machines require a user namespace from systemd-nsresourced.
+PrivateUsers=managed
+ResolvConf=bind-uplink
+Timezone=bind
+# The root is read-only, so a stable machine ID has to come from here. Set one
+# per host from systemd-id128 new.
+#MachineID=
+
+[Network]
+VirtualEthernet=yes
+Port=tcp:8080:8080
