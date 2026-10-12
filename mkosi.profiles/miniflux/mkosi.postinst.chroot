@@ -1,0 +1,12 @@
+#!/bin/sh
+# Keep PostgreSQL's cluster configuration in /var next to the clusters, so that
+# /etc can come from the image unchanged: read-only, or replaced on upgrade.
+# Debian's tools only know /etc/postgresql, so that becomes a link. Relative,
+# because mkosi runs dpkg on the image from outside a chroot.
+set -e
+
+if [ ! -L /etc/postgresql ]; then
+    # Fails if a package ever ships files here, rather than hiding them.
+    rmdir /etc/postgresql
+    ln -s ../var/lib/postgresql/etc /etc/postgresql
+fi
