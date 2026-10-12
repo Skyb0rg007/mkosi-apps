@@ -60,7 +60,7 @@ configuration lives in `/var` with their data, and `/etc` can be read-only.
 A major PostgreSQL upgrade needs one image with both server versions installed,
 so that `pg_upgradecluster` can migrate the old cluster.
 
-Miniflux runs its migrations on every start and listens on `0.0.0.0:8080`
+Miniflux runs its migrations on every start and listens on `0.0.0.0:80`
 unless `miniflux.conf` says otherwise:
 
     mkosi --profile=miniflux \
@@ -81,16 +81,6 @@ e.g. nginx with the `stream` server from `contrib/nginx.md` for IRC and an
 HTTPS server for gamja. The proxy must not send the PROXY protocol, which soju
 only accepts from addresses listed in `accept-proxy-ip`, so soju sees the
 proxy's address as every client's.
-
-soju also answers ident queries with an opaque ident per soju user, so that
-IRC servers can tell its users apart, e.g. to ban one. It listens on the
-unprivileged port 8113, so it needs no capabilities. A server queries port 113
-on the address the connection came from, which for a container is the host,
-so this only works when the host forwards its port 113 to the container's
-8113: as root with `Port=` from `soju.nspawn`, and with the host's firewall
-accepting it. The forwarded query keeps the server's
-address, and the masquerading keeps soju's source port unless it collides,
-which is what soju matches a query against.
 
 Users are created with `sojuctl`:
 
@@ -156,17 +146,14 @@ owned by the foreign UID range; as root `rm -rf` deletes one, otherwise:
   it, every boot gets a new one, and with it a new journal directory.
 - The settings leave out the root autologin of `mkosi.nspawn`;
   `machinectl [--user] shell <app>` gives a root shell.
-- `Port=` needs root. Without, nspawn logs `Failed to modify AF_INET
-  firewall` and carries on, and the app is reachable as `<app>._dhcp`. As
-  root, it forwards connections to the host's addresses, but not to
-  `127.0.0.0/8`; the host side of the veth needs configuring, e.g. by
+- The settings forward no ports: the apps are reached as `<app>._dhcp`, the
+  container's own address, which only resolves and routes on the host. From
+  elsewhere, an app needs a proxy on the host, or `Port=` in its settings.
+  `Port=` needs root, and forwards connections to the host's addresses, but
+  not to `127.0.0.0/8`; the host side of the veth needs configuring, e.g. by
   systemd-networkd's `80-container-ve.network`.
-- The settings forward each service's standard port, e.g. 80 for HTTP and
-  113 for ident, to the port the app listens on in the container, which is
-  unprivileged where it can be (homebox 3000, miniflux 8080, soju's ident
-  8113). `<app>._dhcp` reaches the container itself, so on those ports. Only
-  one running machine can have a given host port, so homebox, miniflux and
-  soju, which all forward 80, cannot all be forwarded at once.
+- The apps listen on their services' standard ports, e.g. 80 for HTTP.
+  Services that do not run as root get `CAP_NET_BIND_SERVICE` for that.
 
 ### miniflux credentials
 

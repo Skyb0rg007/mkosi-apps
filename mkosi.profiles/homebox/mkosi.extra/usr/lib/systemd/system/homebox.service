@@ -12,7 +12,12 @@ Group=homebox
 StateDirectory=homebox
 WorkingDirectory=/var/lib/homebox
 Environment=HBOX_MODE=production
-Environment=HBOX_WEB_PORT=3000
+Environment=HBOX_WEB_PORT=80
+# With no host, homebox also opens a TCP listener on port 80 that it never uses
+# (anyhttp's GetListener("")), and then fails to bind its own. A host that is
+# not a port skips that listener.
+Environment=HBOX_WEB_HOST=[::]
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 Environment=HBOX_STORAGE_CONN_STRING=file:///var/lib/homebox
 Environment=HBOX_STORAGE_PREFIX_PATH=uploads
 Environment=HBOX_DATABASE_SQLITE_PATH=/var/lib/homebox/homebox.db?_pragma=busy_timeout=999&_pragma=journal_mode=WAL&_fk=1&_time_format=sqlite

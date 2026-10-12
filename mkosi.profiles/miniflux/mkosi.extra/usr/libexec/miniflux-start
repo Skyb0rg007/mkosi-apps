@@ -17,7 +17,7 @@ config="$RUNTIME_DIRECTORY/miniflux.conf"
 umask 077
 {
     # Reachable from outside a container's private network.
-    echo "LISTEN_ADDR=0.0.0.0:8080"
+    echo "LISTEN_ADDR=0.0.0.0:80"
     echo "RUN_MIGRATIONS=1"
 
     if [ -e "$creds/miniflux.database-url" ]; then

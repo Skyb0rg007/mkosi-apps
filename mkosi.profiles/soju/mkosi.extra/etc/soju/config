@@ -3,9 +3,5 @@ db sqlite3 /var/lib/soju/main.db
 # soju's contrib/nginx.md.
 listen irc+insecure://
 listen unix+admin://
-# Answers IRC servers' ident queries for soju's upstream connections. They
-# query port 113 on the address that a connection came from, which has to
-# forward it here; an unprivileged port needs no CAP_NET_BIND_SERVICE.
-listen ident://:8113
 # WebSocket for gamja, behind nginx (/etc/nginx/sites-available/soju).
 listen http+unix:///run/soju/http.sock
