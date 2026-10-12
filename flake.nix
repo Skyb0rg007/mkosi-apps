@@ -16,47 +16,25 @@
       forEachSystem = lib.genAttrs systems;
     in
     {
-      packages = forEachSystem (
-        system:
-        let
-          pkgs = nixpkgs.legacyPackages.${system};
-        in
-        {
-          mkosiFhs = pkgs.buildFHSEnv {
-            name = "mkosi";
-            targetPkgs = pkgs: [
-              pkgs.mkosi
-              pkgs.apt
-              pkgs.cacert
-              pkgs.curl
-              pkgs.dpkg
-              pkgs.gnupg
-              pkgs.zstd
-              pkgs.erofs-utils
-              pkgs.e2fsprogs
-              pkgs.sequoia-sqop
-              pkgs.go
-              pkgs.debian-archive-keyring
-            ];
-            profile = ''
-              export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
-              export CURL_CA_BUNDLE=$SSL_CERT_FILE
-            '';
-            runScript = "mkosi";
-          };
-        }
-      );
-
       devShells = forEachSystem (
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
         in
         {
+          # mkosi runs directly, not in a buildFHSEnv: bubblewrap's user
+          # namespace makes systemd-nsresourced refuse mkosi's range request
+          # (DynamicRangeUnavailable). The host tools below only bootstrap the
+          # default tools tree; everything else runs inside it. That bootstrap
+          # also needs /usr/share/keyrings/debian-archive-keyring.gpg on the
+          # host, see the README.
           default = pkgs.mkShellNoCC {
             packages = [
-              self.packages.${system}.mkosiFhs
-              pkgs.python3 # scripts/foreign-shift.py
+              pkgs.mkosi
+              pkgs.apt
+              pkgs.gnupg
+              pkgs.sequoia-sqv
+              pkgs.zstd
               pkgs.nixfmt
               pkgs.treefmt
               pkgs.debian-devscripts
