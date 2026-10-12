@@ -1,0 +1,31 @@
+#!/bin/sh
+set -eu
+
+# Upstream version: mkosi.version without its "-<revision>" suffix. The
+# checksum belongs to that version, so update both together.
+version="$(jq -r .ImageVersion "$MKOSI_CONFIG")"
+version="${version%-*}"
+archive=homebox_Linux_x86_64.tar.gz
+base_url="https://github.com/sysadminsmedia/homebox/releases/download/v$version"
+sha256=078f50ee25de546483d84c0f9ccc587edac6039cde87142fbea39c9ca87dcb05
+
+# mkosi runs this script as /work/sync, so paths must come from $SRCDIR.
+profile="$SRCDIR/mkosi.profiles/homebox"
+stamp="$profile/.downloaded-version"
+
+if [ "$(cat "$stamp" 2>/dev/null)" = "$version" ] && [ -e "$profile/mkosi.extra/usr/bin/homebox" ]; then
+    echo "homebox: $version already downloaded, skipping"
+    exit
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+curl --fail --location --output "$tmpdir/$archive" "$base_url/$archive"
+
+printf '%s  %s\n' "$sha256" "$tmpdir/$archive" | sha256sum --check --status
+
+tar --extract --gunzip --file="$tmpdir/$archive" --directory="$tmpdir" homebox
+
+install -D --mode=0755 "$tmpdir/homebox" "$profile/mkosi.extra/usr/bin/homebox"
+echo "$version" > "$stamp"

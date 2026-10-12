@@ -12,7 +12,7 @@ export GOCACHE="$tmpdir/go-build"
 export GOFLAGS="-modcacherw -mod=readonly -tags=libsqlite3"
 export GOTOOLCHAIN=local
 
-cd "$SRCDIR/mkosi.images/soju/src"
+cd "$SRCDIR/mkosi.profiles/soju/src"
 
 make
 make install PREFIX="/usr"

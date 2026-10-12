@@ -6,13 +6,16 @@
 # build script compiles offline from that cache (see mkosi.build.chroot).
 set -eu
 
-version=0.10.1
+# Upstream version: mkosi.version without its "-<revision>" suffix. The
+# checksum belongs to that version, so update both together.
+version="$(jq -r .ImageVersion "$MKOSI_CONFIG")"
+version="${version%-*}"
 archive="soju-$version.tar.gz"
 base_url="https://codeberg.org/emersion/soju/releases/download/v$version"
 sha256=78cfb809d6105b797b0af3c837906044a315a90c26e3e6a0bace68f5354c6a8b
 
-TARGET="$SRCDIR/mkosi.images/soju/src"
-GPG_KEY="$SRCDIR/mkosi.images/soju/emersion.gpg"
+TARGET="$SRCDIR/mkosi.profiles/soju/src"
+GPG_KEY="$SRCDIR/mkosi.profiles/soju/emersion.gpg"
 
 if ! command -v go >/dev/null; then
     echo "soju: go must be available in the tools tree (ToolsTreePackages=golang-go)"
@@ -22,8 +25,8 @@ fi
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
-if [ -e "$TARGET/go.mod" ]; then
-    echo "soju: $TARGET exists, skipping download"
+if [ "$(cat "$TARGET/.mkosi-version" 2>/dev/null)" = "$version" ]; then
+    echo "soju: $TARGET is $version, skipping download"
 else
     curl --fail --location --output "$tmpdir/$archive" "$base_url/$archive"
     curl --fail --location --output "$tmpdir/$archive.sig" "$base_url/$archive.sig"
@@ -51,6 +54,7 @@ else
     rm -rf "$tmpdir/src"
     mkdir "$tmpdir/src"
     tar --extract --gunzip --file="$tmpdir/$archive" --directory="$tmpdir/src" --strip-components=1
+    echo "$version" > "$tmpdir/src/.mkosi-version"
     rm -rf "$TARGET"
     mv "$tmpdir/src" "$TARGET"
 fi

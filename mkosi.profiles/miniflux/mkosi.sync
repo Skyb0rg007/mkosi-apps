@@ -1,7 +1,10 @@
 #!/bin/sh
 set -eu
 
-version=2.3.2
+# Upstream version: mkosi.version without its "-<revision>" suffix. The
+# checksum belongs to that version, so update both together.
+version="$(jq -r .ImageVersion "$MKOSI_CONFIG")"
+version="${version%-*}"
 deb="miniflux_${version}_amd64.deb"
 url="https://github.com/miniflux/v2/releases/download/$version/$deb"
 sha256=16c06c18cbaf6d565c7a38534c9913dce93def80eb43388beaa25a55145ae1dc

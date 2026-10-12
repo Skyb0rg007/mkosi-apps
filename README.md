@@ -3,6 +3,37 @@
 
 This repo contains minimal mkosi-based images for different applications.
 
+## Building an app
+
+Each app is a profile in `mkosi.profiles/<app>/`, built one at a time as the
+main image on top of `mkosi.images/minimal-base`:
+
+    mkosi --profile=soju build          # mkosi.output/soju_0.10.1-1/
+    mkosi --profile=soju boot           # rootless nspawn, machine "soju"
+    mkosi --profile=soju,vm build       # mkosi.output/vm/soju_0.10.1-1.raw
+
+The `vm` profile turns any app into a bootable disk for `systemd-vmspawn`. Its
+outputs go to `mkosi.output/vm/`, because for a disk image mkosi also creates a
+symlink with the name a directory build would use. Without an app profile,
+`mkosi build` produces the bare base image as `mkosi.output/image`.
+
+`mkosi boot` names the machine after the app (`Machine=`), so its `.nspawn`
+settings are found and it is reachable from the host as `<app>._dhcp`. Started
+by hand, `systemd-nspawn` names the machine after the versioned directory
+instead and finds no settings file.
+
+### Versions
+
+An app's version lives in `mkosi.profiles/<app>/mkosi.version` as
+`<upstream>-<revision>`, e.g. `0.10.1-1`. It names the output, lands in
+`IMAGE_VERSION=` in os-release, and sorts correctly for `systemd-vpick` and
+`systemd-sysupdate`, including upstream `0.10.1.1` against `0.10.1-2`.
+
+- New upstream release: set the new upstream version with revision `1`, and
+  update the checksum in the app's `mkosi.sync`. The sync scripts derive the
+  upstream version from `mkosi.version`, so it is written down only once.
+- Image-only change: bump the revision.
+
 ## Host setup
 
 mkosi bootstraps its Debian tools tree with the host's apt, which reads the
@@ -34,12 +65,14 @@ there); the image's own `golang-go` from `BuildPackages=` compiles.
 
 ## Rootless containers
 
-The top-level image is built as a directory (`Format=directory`) owned by the
-systemd foreign UID range, which is what unprivileged
-`systemd-nspawn --directory=` requires. Build and boot need no privileges:
+An app is built as a directory (`Format=directory`) owned by the systemd
+foreign UID range, which is what unprivileged `systemd-nspawn --directory=`
+requires. Build and boot need no privileges.
 
-    mkosi build
-    systemd-nspawn --directory=mkosi.output/image --boot
+`mkosi boot` gives the container a veth link (`RuntimeNetwork=interface`). The
+host side is named `ns-<hex>`, which systemd's shipped `80-namespace-ns.network`
+configures with a DHCP server and masquerading; on NixOS the firewall also has
+to accept DHCP on it, e.g. `networking.firewall.trustedInterfaces = [ "ns-+" ]`.
 
 `ForeignUIDRange=yes` makes mkosi shift the finished tree itself with
 `systemd-dissect --shift`, inside a user namespace `systemd-nsresourced` maps

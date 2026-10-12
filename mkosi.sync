@@ -11,7 +11,7 @@ set -eu
 
 cd "$SRCDIR"
 
-for tree in mkosi.extra mkosi.images/*/mkosi.extra; do
+for tree in mkosi.extra mkosi.images/*/mkosi.extra mkosi.profiles/*/mkosi.extra; do
     [ -d "$tree" ] || continue
     find "$tree" -type d -exec chmod 0755 {} +
     find "$tree" -type f -perm -u+x -exec chmod 0755 {} +
