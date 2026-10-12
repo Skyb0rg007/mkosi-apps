@@ -1,0 +1,102 @@
+#!/bin/sh
+# Install a build as the newest version of its app's .mstack/ machine:
+#
+#     bin/install-app mkosi.output/soju_0.10.1-1
+#
+# systemd-nspawn@soju.service boots it on its next start. As root the machine
+# is /var/lib/machines/soju.mstack/, otherwise it is below
+# ~/.local/state/machines/: where the system's or the user's
+# systemd-nspawn@.service looks. A new machine also gets the profile's settings
+# file, with a machine ID of its own.
+#
+# What nspawn mounts is owned by the foreign UID range, like the build: the
+# versions, layer@1/ and bind@var/. Without root, systemd-mountfsd creates
+# those directories and mkosi-sandbox copies into them. Their parents stay
+# owned by the user, since mountfsd only mounts a foreign-owned directory for
+# an unprivileged client if the client owns its parent.
+set -eu
+
+foreign=2147352576
+
+usage="usage: $0 mkosi.output/<app>_<version>"
+output="${1:?$usage}"
+output="${output%/}"
+name="$(basename "$output")"
+app="${name%%_*}"
+version="${name#*_}"
+if [ "$app" = "$name" ] || [ ! -d "$output" ]; then
+    echo "$usage" >&2
+    exit 1
+fi
+if [ "$(stat -c %u "$output")" != "$foreign" ]; then
+    echo "$output is not owned by the foreign UID range" >&2
+    exit 1
+fi
+# Booting the output itself leaves state in it, such as a machine ID that
+# would take precedence over MachineID=.
+if [ "$(cat "$output/etc/machine-id")" != uninitialized ]; then
+    echo "$output has been booted; rebuild it with mkosi -f" >&2
+    exit 1
+fi
+
+if [ "$(id -u)" = 0 ]; then
+    machines=/var/lib/machines
+    settings=/etc/systemd/nspawn
+else
+    machines="${XDG_STATE_HOME:-$HOME/.local/state}/machines"
+    settings="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/nspawn"
+fi
+machine="$machines/$app.mstack"
+layer="layer@0_$version"
+
+if [ -e "$machine/layer@0.v/$layer" ]; then
+    echo "$machine/layer@0.v/$layer exists already" >&2
+    exit 1
+fi
+
+# Create the directory $1/$2, owned by the foreign UID range.
+mkdir_foreign() {
+    if [ "$(id -u)" = 0 ]; then
+        install -d -o "$foreign" -g "$foreign" "$1/$2"
+    else
+        varlinkctl call --push-fd=3 /run/systemd/io.systemd.MountFileSystem \
+            io.systemd.MountFileSystem.MakeDirectory \
+            "{\"parentFileDescriptor\":0,\"name\":\"$2\",\"mode\":493}" \
+            3<"$1" >/dev/null
+    fi
+}
+
+mkdir -p "$machine/layer@0.v"
+for dir in layer@1 bind@var; do
+    [ -d "$machine/$dir" ] || mkdir_foreign "$machine" "$dir"
+done
+
+# Copy into a directory that systemd-vpick ignores, so that an interrupted copy
+# is never booted, and rename it once complete.
+tmp=".$layer.tmp"
+[ -d "$machine/layer@0.v/$tmp" ] || mkdir_foreign "$machine/layer@0.v" "$tmp"
+# shellcheck disable=SC2016 # expanded by the sh -c below
+copy='set -e
+find "$2" -mindepth 1 -delete
+cp -a "$1/." "$2/"'
+
+if [ "$(id -u)" = 0 ]; then
+    sh -c "$copy" sh "$output" "$machine/layer@0.v/$tmp"
+else
+    mkosi-sandbox \
+        --ro-bind / / \
+        --tmpfs /tmp \
+        --ro-bind-foreign "$(realpath "$output")" /tmp/output \
+        --bind-foreign "$(realpath "$machine/layer@0.v/$tmp")" /tmp/layer \
+        --become-root \
+        -- sh -c "$copy" sh /tmp/output /tmp/layer
+fi
+mv "$machine/layer@0.v/$tmp" "$machine/layer@0.v/$layer"
+echo "Installed $name in $machine"
+
+profile="$(dirname "$0")/../mkosi.profiles/$app/$app.nspawn"
+if [ -e "$profile" ] && [ ! -e "$settings/$app.nspawn" ]; then
+    mkdir -p "$settings"
+    sed "s/^#MachineID=\$/MachineID=$(systemd-id128 new)/" "$profile" > "$settings/$app.nspawn"
+    echo "Installed $settings/$app.nspawn"
+fi
