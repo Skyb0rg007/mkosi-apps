@@ -82,11 +82,13 @@ HTTPS server for gamja. The proxy must not send the PROXY protocol, which soju
 only accepts from addresses listed in `accept-proxy-ip`, so soju sees the
 proxy's address as every client's.
 
-soju also answers ident queries on port 113 with an opaque ident per soju
-user, so that IRC servers can tell its users apart, e.g. to ban one. A server
-queries the address the connection came from, which for a container is the
-host, so this only works when the host forwards port 113: as root with `Port=`
-from `soju.nspawn`, and with the host's firewall accepting it. The forwarded query keeps the server's
+soju also answers ident queries with an opaque ident per soju user, so that
+IRC servers can tell its users apart, e.g. to ban one. It listens on the
+unprivileged port 8113, so it needs no capabilities. A server queries port 113
+on the address the connection came from, which for a container is the host,
+so this only works when the host forwards its port 113 to the container's
+8113: as root with `Port=` from `soju.nspawn`, and with the host's firewall
+accepting it. The forwarded query keeps the server's
 address, and the masquerading keeps soju's source port unless it collides,
 which is what soju matches a query against.
 
