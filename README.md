@@ -34,6 +34,36 @@ An app's version lives in `mkosi.profiles/<app>/mkosi.version` as
   upstream version from `mkosi.version`, so it is written down only once.
 - Image-only change: bump the revision.
 
+### miniflux
+
+The miniflux image is configured entirely through system credentials, all
+optional:
+
+| Credential | Effect |
+|---|---|
+| `miniflux.admin-username`, `miniflux.admin-password` | Create this admin user if it does not exist yet |
+| `miniflux.database-url` | Use this PostgreSQL; without it a local one runs |
+| `miniflux.conf` | Further settings in Miniflux's config file format, e.g. `BASE_URL=…` |
+
+Without `miniflux.database-url`, `miniflux-postgresql-setup.service` creates a
+Debian cluster (`pg_createcluster`) on first boot, plus a `miniflux` role and
+database; later boots start it through Debian's `postgresql.service` like any
+other cluster. Miniflux connects over the Unix socket with Debian's default
+peer authentication, so there is no database password. The cluster cannot ship
+in the image, since Debian's install-time `pg_createcluster` fails in mkosi's
+single-UID build (the `initdb failed` message during the build is harmless).
+
+A major PostgreSQL upgrade needs one image with both server versions installed,
+so that `pg_upgradecluster` can migrate the old cluster.
+
+Miniflux runs its migrations on every start and listens on `0.0.0.0:8080`
+unless `miniflux.conf` says otherwise:
+
+    mkosi --profile=miniflux \
+        --credential=miniflux.admin-username=admin \
+        --credential=miniflux.admin-password=… \
+        boot
+
 ## Host setup
 
 mkosi bootstraps its Debian tools tree with the host's apt, which reads the

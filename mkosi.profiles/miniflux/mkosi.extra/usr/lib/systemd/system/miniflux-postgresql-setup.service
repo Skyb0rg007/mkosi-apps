@@ -1,0 +1,13 @@
+[Unit]
+Description=Set up PostgreSQL for Miniflux
+# Only when Miniflux is not pointed at another database.
+ConditionCredential=!miniflux.database-url
+# Debian's postgresql.service is active once every cluster that existed at boot
+# is running; on first boot there is none yet and this creates it.
+Wants=postgresql.service
+After=postgresql.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/miniflux-postgresql-setup

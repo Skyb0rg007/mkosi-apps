@@ -1,0 +1,25 @@
+#!/bin/sh
+# Make sure a PostgreSQL cluster with a miniflux role and database exists.
+#
+# The cluster cannot come with the image: Debian creates it when the package is
+# installed, which fails in mkosi's single-UID build. So the first boot creates
+# it with Debian's own tools, and from then on postgresql-generator starts it
+# with the other clusters. Debian's defaults are what Miniflux needs: local
+# connections use peer authentication, so the miniflux system user is the
+# miniflux role and no password exists anywhere.
+set -eu
+
+if [ -z "$(pg_lsclusters --no-header)" ]; then
+    # The newest PostgreSQL in the image.
+    version="$(ls /usr/lib/postgresql | sort -V | tail -n 1)"
+    pg_createcluster --start "$version" main
+fi
+
+psql() {
+    runuser -u postgres -- psql --quiet --no-align --tuples-only --command="$1"
+}
+
+[ "$(psql "SELECT 1 FROM pg_roles WHERE rolname = 'miniflux'")" = 1 ] ||
+    runuser -u postgres -- createuser miniflux
+[ "$(psql "SELECT 1 FROM pg_database WHERE datname = 'miniflux'")" = 1 ] ||
+    runuser -u postgres -- createdb --owner=miniflux miniflux

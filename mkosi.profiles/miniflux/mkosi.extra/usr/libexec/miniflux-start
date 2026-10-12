@@ -1,0 +1,42 @@
+#!/bin/sh
+# Start Miniflux configured from system credentials, all optional:
+#
+#   miniflux.admin-username,  create this admin user if it does not exist yet
+#   miniflux.admin-password
+#   miniflux.database-url     use this PostgreSQL instead of the local one
+#   miniflux.conf             further settings, in Miniflux's config file format
+#
+# Settings are written to one config file, image defaults first, so that
+# miniflux.conf overrides them. Miniflux ranks the environment above the config
+# file, so nothing here is passed through the environment.
+set -eu
+
+creds="${CREDENTIALS_DIRECTORY:-/nonexistent}"
+config="$RUNTIME_DIRECTORY/miniflux.conf"
+
+umask 077
+{
+    # Reachable from outside a container's private network.
+    echo "LISTEN_ADDR=0.0.0.0:8080"
+    echo "RUN_MIGRATIONS=1"
+
+    if [ -e "$creds/miniflux.database-url" ]; then
+        echo "DATABASE_URL_FILE=$creds/miniflux.database-url"
+    else
+        # Debian's cluster from miniflux-postgresql-setup.service, over its socket
+        # with peer authentication.
+        echo "DATABASE_URL=host=/run/postgresql user=miniflux dbname=miniflux sslmode=disable"
+    fi
+
+    if [ -e "$creds/miniflux.admin-username" ] && [ -e "$creds/miniflux.admin-password" ]; then
+        echo "CREATE_ADMIN=1"
+        echo "ADMIN_USERNAME_FILE=$creds/miniflux.admin-username"
+        echo "ADMIN_PASSWORD_FILE=$creds/miniflux.admin-password"
+    fi
+
+    if [ -e "$creds/miniflux.conf" ]; then
+        cat "$creds/miniflux.conf"
+    fi
+} > "$config"
+
+exec /usr/bin/miniflux -config-file "$config"
