@@ -1,0 +1,4 @@
+enable victoria-metrics.service
+enable vmagent.service
+enable vmalert.service
+enable vmauth.service

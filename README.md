@@ -92,6 +92,77 @@ its `package-lock.json` pins, checked against the lockfile's hashes, so the
 image needs neither npm nor a build. gamja's version is pinned in the sync
 script, separately from soju's.
 
+### victoriametrics
+
+Single-node [VictoriaMetrics](https://docs.victoriametrics.com/victoriametrics/)
+with its vmui web UI on port 80, plus upstream's vmutils. It scrapes its own
+metrics every 10s from the start. Everything else is configured with files in
+`/etc/victoriametrics/`, all optional:
+
+| File | Effect |
+|---|---|
+| `scrape.yml` | Prometheus `scrape_configs` for VictoriaMetrics to scrape |
+| `vmagent.yml` | Run vmagent (port 8429) with these `scrape_configs`, writing into VictoriaMetrics |
+| `rules/*.yml` | Run vmalert (port 8880) with these alerting and recording rules; vmui shows its alerts |
+| `vmauth.yml` | Run vmauth (port 8427) with this auth config |
+| `victoria-metrics.env`, `vmagent.env`, `vmalert.env`, `vmauth.env` | Flags as environment variables, `-retentionPeriod=1y` as `retentionPeriod=1y`; they replace the units' defaults, lists included |
+
+vmalert stores its alerts' state and its recording rules' results in
+VictoriaMetrics. It notifies nobody until `vmalert.env` sets `notifier_url` or
+`notifier_config`, together with `notifier_blackhole=false`. Each service
+reloads its config files on `systemctl reload`; a changed `.env` file takes a
+restart. vmbackup, vmrestore, vmctl and vmalert-tool are there to run by hand,
+e.g. a backup into the machine's `/var`:
+
+    machinectl [--user] shell victoriametrics /usr/bin/vmbackup \
+        -storageDataPath=/var/lib/victoria-metrics \
+        -snapshot.createURL=http://localhost/snapshot/create \
+        -dst=fs:///var/backups/victoria-metrics
+
+### victorialogs
+
+Single-node [VictoriaLogs](https://docs.victoriametrics.com/victorialogs/) with
+its web UI and ingestion APIs on port 80, plus vlagent and vlogscli. Its flags
+come from `/etc/victorialogs/victoria-logs.env` like victoriametrics', e.g.
+`retentionPeriod=30d` (the default is 7 days). The host's journal can be
+shipped there with `systemd-journal-upload`; the URL needs its port, since
+without one it gets the default 19532 appended after the path:
+
+    systemd-journal-upload --url=http://victorialogs._dhcp:80/insert/journald
+
+Both images are upstream's release binaries, pinned by checksum in the sync
+scripts; upstream does not sign them. They build with a newer Go than trixie's.
+
+### Configuring through a confext
+
+The image's `/etc` is read-only, so victoriametrics and victorialogs take
+their configuration from a configuration extension, which `systemd-confext`
+merges over `/etc` on boot. The image sets up an empty one as a directory in
+the machine's `/var`, so it survives upgrades; files under its `etc/` replace
+the image's:
+
+    machinectl [--user] shell victoriametrics
+    cd /var/lib/confexts/victoriametrics/etc/victoriametrics
+    # edit scrape.yml, rules/*.yml, ...
+    systemd-confext refresh
+    systemctl reload victoria-metrics  # or restart, or start vmalert, ...
+
+On a new machine, the first boot creates the extension only after
+`systemd-confext` has run, so the first edit needs the `refresh`. Secrets can
+still come as system credentials named `victoriametrics.*` or
+`victorialogs.*`, which the services import, for flags and config fields that
+take a file path, e.g. `/run/credentials/vmalert.service/victoriametrics.token`.
+
+The alternatives do not work rootless: a `BindReadOnly=` from the host fails
+under `PrivateUsers=managed` (nspawn cannot clone a host directory from
+within the managed user namespace), and a `robind@` entry in the `.mstack/`
+needs a foreign-owned directory and is mounted writable by systemd 261 anyway.
+`systemd-confext` in turn fails to merge over the bind mount that
+`ResolvConf=bind-uplink` puts on `/etc/resolv.conf`, so these two machines'
+settings have `ResolvConf=off`, and the container's systemd-resolved gets DNS
+servers over DHCP. With the confext merged, the container has no
+`/etc/localtime` either, so it runs on UTC.
+
 ## Running the apps
 
 `bin/install-app` installs a build as its app's machine, a mount stack
@@ -155,11 +226,12 @@ owned by the foreign UID range; as root `rm -rf` deletes one, otherwise:
 - The apps listen on their services' standard ports, e.g. 80 for HTTP.
   Services that do not run as root get `CAP_NET_BIND_SERVICE` for that.
 
-### miniflux credentials
+### Passing credentials
 
 `.nspawn` files cannot pass credentials, and nspawn forwards only those named
-with `--load-credential=`, so miniflux's go in a drop-in that repeats the
-unit's `ExecStart=` (see `systemctl [--user] cat systemd-nspawn@.service`):
+with `--load-credential=`, so an app's credentials go in a drop-in that
+repeats the unit's `ExecStart=` (see `systemctl [--user] cat
+systemd-nspawn@.service`), e.g. for miniflux:
 
     # ~/.config/systemd/user/systemd-nspawn@miniflux.service.d/credentials.conf
     [Service]

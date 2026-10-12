@@ -1,0 +1,44 @@
+#!/bin/sh
+# Download upstream's release binaries: single-node VictoriaLogs, and vlutils
+# (vlagent, vlogscli). They are statically linked, and installed without
+# upstream's "-prod" suffix.
+set -eu
+
+# Upstream version: mkosi.version without its "-<revision>" suffix. The
+# checksums belong to that version, so update them together.
+version="$(jq -r .ImageVersion "$MKOSI_CONFIG")"
+version="${version%-*}"
+base_url="https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/v$version"
+# Upstream publishes checksums next to the archives but no signatures, so
+# pinning them here is all the verification there is.
+archives="
+victoria-logs-linux-amd64-v$version.tar.gz 55feba89713cafa952673f91b8b38e7701bb0290989263da671b47a0de16edd3
+vlutils-linux-amd64-v$version.tar.gz e72ac62b9e497e415a0b530a95c730a74d5175e5347553775c89997ee2935cf1
+"
+
+# mkosi runs this script as /work/sync, so paths must come from $SRCDIR.
+profile="$SRCDIR/mkosi.profiles/victorialogs"
+stamp="$profile/.downloaded-version"
+bin="$profile/mkosi.extra/usr/bin"
+
+if [ "$(cat "$stamp" 2>/dev/null)" = "$version" ] && [ -e "$bin/victoria-logs" ]; then
+    echo "victorialogs: $version already downloaded, skipping"
+    exit
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+echo "$archives" | while read -r archive sha256; do
+    [ -n "$archive" ] || continue
+    curl --fail --location --output "$tmpdir/$archive" "$base_url/$archive"
+    printf '%s  %s\n' "$sha256" "$tmpdir/$archive" | sha256sum --check --status
+    tar --extract --gunzip --file="$tmpdir/$archive" --directory="$tmpdir"
+done
+
+rm -rf "$bin"
+for prod in "$tmpdir"/*-prod; do
+    name="$(basename "$prod" -prod)"
+    install -D --mode=0755 "$prod" "$bin/$name"
+done
+echo "$version" > "$stamp"

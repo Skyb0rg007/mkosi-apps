@@ -1,0 +1,28 @@
+[Unit]
+Description=VictoriaMetrics
+Documentation=https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/
+After=network.target
+
+[Service]
+DynamicUser=yes
+StateDirectory=victoria-metrics
+# HTTP API and vmui on port 80.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+# Flags as environment variables, "-promscrape.config" as promscrape_config;
+# the optional file replaces these defaults.
+Environment=httpListenAddr=:80
+# Self-scraping gives VictoriaMetrics' own metrics from the start.
+Environment=selfScrapeInterval=10s
+Environment=promscrape_config=/etc/victoriametrics/scrape.yml
+# vmui shows vmalert's alerts and rules through this.
+Environment=vmalert_proxyURL=http://localhost:8880
+EnvironmentFile=-/etc/victoriametrics/victoria-metrics.env
+# For secrets that flags or config files name by path.
+ImportCredential=victoriametrics.*
+ExecStart=/usr/bin/victoria-metrics -envflag.enable -storageDataPath=/var/lib/victoria-metrics
+# Rereads the scrape config.
+ExecReload=/usr/bin/kill -HUP $MAINPID
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

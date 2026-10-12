@@ -1,0 +1,26 @@
+[Unit]
+Description=vmalert, evaluating rules against VictoriaMetrics
+Documentation=https://docs.victoriametrics.com/victoriametrics/vmalert/
+ConditionDirectoryNotEmpty=/etc/victoriametrics/rules
+After=network.target victoria-metrics.service
+
+[Service]
+DynamicUser=yes
+# Flags as environment variables (see victoria-metrics.service). Writing and
+# reading the local VictoriaMetrics keeps alerts' state over restarts, and
+# stores recording rules' results.
+Environment=rule=/etc/victoriametrics/rules/*.yml
+Environment=datasource_url=http://localhost
+Environment=remoteWrite_url=http://localhost
+Environment=remoteRead_url=http://localhost
+# Alerts notify nobody until vmalert.env sets notifier_url or notifier_config,
+# and notifier_blackhole=false.
+Environment=notifier_blackhole=true
+EnvironmentFile=-/etc/victoriametrics/vmalert.env
+ImportCredential=victoriametrics.*
+ExecStart=/usr/bin/vmalert -envflag.enable
+ExecReload=/usr/bin/kill -HUP $MAINPID
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

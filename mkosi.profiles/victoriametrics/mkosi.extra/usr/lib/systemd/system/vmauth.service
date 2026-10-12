@@ -1,0 +1,18 @@
+[Unit]
+Description=vmauth, an authenticating proxy
+Documentation=https://docs.victoriametrics.com/victoriametrics/vmauth/
+ConditionPathExists=/etc/victoriametrics/vmauth.yml
+After=network.target
+
+[Service]
+DynamicUser=yes
+# Flags as environment variables (see victoria-metrics.service).
+Environment=auth_config=/etc/victoriametrics/vmauth.yml
+EnvironmentFile=-/etc/victoriametrics/vmauth.env
+ImportCredential=victoriametrics.*
+ExecStart=/usr/bin/vmauth -envflag.enable
+ExecReload=/usr/bin/kill -HUP $MAINPID
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

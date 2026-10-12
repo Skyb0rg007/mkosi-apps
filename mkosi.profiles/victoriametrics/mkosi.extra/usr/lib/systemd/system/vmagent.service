@@ -1,0 +1,21 @@
+[Unit]
+Description=vmagent, scraping into VictoriaMetrics
+Documentation=https://docs.victoriametrics.com/victoriametrics/vmagent/
+ConditionPathExists=/etc/victoriametrics/vmagent.yml
+After=network.target victoria-metrics.service
+
+[Service]
+DynamicUser=yes
+# Data not yet written to VictoriaMetrics.
+StateDirectory=vmagent
+# Flags as environment variables (see victoria-metrics.service).
+Environment=promscrape_config=/etc/victoriametrics/vmagent.yml
+Environment=remoteWrite_url=http://localhost/api/v1/write
+EnvironmentFile=-/etc/victoriametrics/vmagent.env
+ImportCredential=victoriametrics.*
+ExecStart=/usr/bin/vmagent -envflag.enable -remoteWrite.tmpDataPath=/var/lib/vmagent
+ExecReload=/usr/bin/kill -HUP $MAINPID
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

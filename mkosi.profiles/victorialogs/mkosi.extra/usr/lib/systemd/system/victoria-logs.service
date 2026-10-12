@@ -1,0 +1,21 @@
+[Unit]
+Description=VictoriaLogs
+Documentation=https://docs.victoriametrics.com/victorialogs/
+After=network.target
+
+[Service]
+DynamicUser=yes
+StateDirectory=victoria-logs
+# HTTP API, ingestion and web UI on port 80.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+# Flags as environment variables, "-retentionPeriod" as retentionPeriod; the
+# optional file replaces these defaults.
+Environment=httpListenAddr=:80
+EnvironmentFile=-/etc/victorialogs/victoria-logs.env
+# For secrets that flags name by path.
+ImportCredential=victorialogs.*
+ExecStart=/usr/bin/victoria-logs -envflag.enable -storageDataPath=/var/lib/victoria-logs
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
