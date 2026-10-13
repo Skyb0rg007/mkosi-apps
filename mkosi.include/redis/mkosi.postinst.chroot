@@ -1,0 +1,8 @@
+#!/bin/sh
+# The package gives /etc/redis to the redis group, which mkosi's single-UID
+# build cannot, so it ends up readable by root alone and Redis cannot read its
+# configuration. Debian's holds no secrets: make it readable to all instead.
+set -e
+
+chmod 0755 /etc/redis
+chmod 0644 /etc/redis/redis.conf

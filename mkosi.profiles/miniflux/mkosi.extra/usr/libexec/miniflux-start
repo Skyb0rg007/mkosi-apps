@@ -23,8 +23,8 @@ umask 077
     if [ -e "$creds/miniflux.database-url" ]; then
         echo "DATABASE_URL_FILE=$creds/miniflux.database-url"
     else
-        # Debian's cluster from miniflux-postgresql-setup.service, over its socket
-        # with peer authentication.
+        # Debian's cluster from postgresql-setup@miniflux.service, over its
+        # socket with peer authentication.
         echo "DATABASE_URL=host=/run/postgresql user=miniflux dbname=miniflux sslmode=disable"
     fi
 

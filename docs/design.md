@@ -63,7 +63,10 @@ Following [ParticleOS](https://github.com/systemd/particleos), the images'
   the image on upgrades; a confext overrides them. Apps whose directories a
   confext may add files to (soju, VictoriaMetrics) are linked file by file,
   since a confext's directory hides a lower layer's link to a whole directory.
-- `systemd-sysusers` creates the users, Debian's `www-data` included.
+- `systemd-sysusers` creates the users, Debian's `www-data` included. Users
+  that Debian's postinsts create, such as `postgres` or `redis`, get a
+  `sysusers.d` entry of their own, and directories they create in `/var` a
+  `tmpfiles.d` entry, since the machine's `/var` is not the image's.
 - minimal-base's own files are copied again into every app image, after the
   app's packages: those can upgrade minimal-base's packages, which would
   overwrite files it replaces, such as systemd's `tmpfiles.d/etc.conf`.
@@ -130,6 +133,19 @@ mkosi builds in single-UID mode, so every inode is owned by the invoking user
 before the shift and by foreign UID 0 after it. Files that a package would
 install owned by a service user land as root instead; use `StateDirectory=` or
 tmpfiles `z`/`Z` where that matters.
+
+## Shared parts
+
+`mkosi.include/` holds what several apps need, each a config directory that a
+profile includes with `Include=%D/mkosi.include/<name>`, with its packages,
+files and scripts:
+
+- `postgresql`: a cluster created on the first boot, and a database per app
+  from `postgresql-setup@<app>.service`
+  ([README](../mkosi.include/postgresql/README.md)).
+- `redis`: Debian's Redis on localhost ([README](../mkosi.include/redis/README.md)).
+- `nginx`: nginx without Debian's default site; the app ships its own.
+- `python`: a virtualenv from hashed wheels (see below).
 
 ## Source builds
 

@@ -1,6 +1,0 @@
-#!/bin/sh
-# nginx serves gamja from sites-enabled/soju; drop Debian's default site, which
-# would also claim port 80.
-set -e
-
-rm -f /etc/nginx/sites-enabled/default

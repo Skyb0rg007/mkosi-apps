@@ -1,0 +1,25 @@
+#!/bin/sh
+# install-wheels VENV LOCKFILE
+#
+# Create the virtualenv VENV and install the wheels LOCKFILE pins into it,
+# offline, from those download-wheels left in mkosi.cache/wheels/; pip checks
+# their hashes again. Runs in a build script, which makes VENV at its final
+# path, since a virtualenv records it. Packages that came as source build with
+# Debian's setuptools, from BuildPackages=, since build isolation would
+# download it.
+set -eu
+
+venv="$1"
+lock="$2"
+
+python3 -m venv "$venv"
+PYTHONPATH=/usr/lib/python3/dist-packages "$venv/bin/pip" install \
+    --quiet \
+    --disable-pip-version-check \
+    --no-cache-dir \
+    --no-index \
+    --find-links="$SRCDIR/mkosi.cache/wheels" \
+    --no-deps \
+    --no-build-isolation \
+    --require-hashes \
+    --requirement="$lock"

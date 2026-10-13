@@ -1,0 +1,5 @@
+#!/bin/sh
+# Drop Debian's default site, which would claim port 80 before the app's.
+set -e
+
+rm -f /etc/nginx/sites-enabled/default

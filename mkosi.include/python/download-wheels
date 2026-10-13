@@ -1,0 +1,52 @@
+#!/bin/sh
+# download-wheels LOCKFILE [SDIST...]
+#
+# Download the wheels LOCKFILE pins into mkosi.cache/wheels/, checked against
+# its hashes, for the image's CPython 3.13 on glibc: binary wheels only, so
+# that the build compiles nothing. Packages named as SDIST, which have to be
+# pure Python, come as source instead, for those that publish no wheel. Runs
+# in a sync script, in the tools tree.
+#
+# pip skips wheels the cache has, but still asks the index about each, so this
+# does nothing when the lockfile is unchanged since its last run.
+set -eu
+
+lock="$1"
+shift
+no_binary="$(IFS=,; echo "${*:-:none:}")"
+wheels="$SRCDIR/mkosi.cache/wheels"
+stamp="$wheels/.$(echo "$lock" | sha256sum | cut -c1-16)"
+lock_sha256="$(sha256sum < "$lock")"
+
+if [ "$(cat "$stamp" 2>/dev/null)" = "$lock_sha256" ]; then
+    echo "download-wheels: wheels for $lock already downloaded, skipping"
+    exit
+fi
+
+# pip matches a manylinux platform exactly, not the older ones a newer glibc
+# also runs, so list them all, down from trixie's glibc 2.41, with the legacy
+# names of 2.17, 2.12 and 2.5.
+set --
+y=40
+while [ "$y" -ge 5 ]; do
+    set -- "$@" "--platform=manylinux_2_${y}_x86_64"
+    y=$((y - 1))
+done
+set -- "$@" --platform=manylinux2014_x86_64 --platform=manylinux2010_x86_64 --platform=manylinux1_x86_64
+
+mkdir -p "$wheels"
+python3 -m pip download \
+    --quiet \
+    --disable-pip-version-check \
+    --no-cache-dir \
+    --no-deps \
+    --require-hashes \
+    --only-binary=:all: \
+    --no-binary="$no_binary" \
+    --implementation=cp \
+    --python-version=3.13 \
+    --abi=cp313 \
+    "$@" \
+    --dest="$wheels" \
+    --requirement="$lock"
+echo "$lock_sha256" > "$stamp"

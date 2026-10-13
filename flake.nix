@@ -40,6 +40,8 @@
               pkgs.debian-devscripts
               pkgs.dpkg
               pkgs.sequoia-sqop
+              # Regenerates the Python lockfiles of apps that have none upstream.
+              pkgs.uv
             ];
             # Nix exports SOURCE_DATE_EPOCH=315532800, which makes mkosi clamp
             # every mtime in the images to 1980, /usr's included. Then no new

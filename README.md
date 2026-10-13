@@ -17,7 +17,9 @@ How it all fits together, and why, is in [docs/design.md](docs/design.md).
 ## Building
 
 Each app is a profile in `mkosi.profiles/<app>/`, built on top of
-`mkosi.images/minimal-base`. Run mkosi from the dev shell (`nix develop`):
+`mkosi.images/minimal-base`. Apps that need PostgreSQL, Redis, nginx or a
+Python virtualenv include them from `mkosi.include/`. Run mkosi from the dev
+shell (`nix develop`):
 
     mkosi --profile=soju build          # mkosi.output/soju_0.10.1-1/
     mkosi --profile=soju boot           # try it, on a throwaway copy
