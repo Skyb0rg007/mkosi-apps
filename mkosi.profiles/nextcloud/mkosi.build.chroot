@@ -1,0 +1,19 @@
+#!/bin/sh
+# Install Nextcloud into /usr/share/nextcloud, as released: its integrity
+# check flags any file added to or changed in the tree, but for the config and
+# app directories. The release's modes keep the tree from other users, which
+# here are nginx's www-data and Nextcloud's nextcloud, so open them up.
+set -eu
+
+src="$SRCDIR/mkosi.profiles/nextcloud/src"
+dest="$DESTDIR/usr/share/nextcloud"
+
+mkdir -p "$DESTDIR/usr/share"
+cp -R "$src" "$dest"
+rm "$dest/.mkosi-version"
+find "$dest" -type d -exec chmod 0755 {} +
+find "$dest" -type f -exec chmod 0644 {} +
+
+# Apps from the app store go into /var/lib/nextcloud/custom_apps (see
+# /etc/nextcloud/image.config.php), which nginx serves from here too.
+ln -s /var/lib/nextcloud/custom_apps "$dest/custom_apps"

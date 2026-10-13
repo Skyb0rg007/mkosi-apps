@@ -1,0 +1,5 @@
+enable nextcloud-setup.service
+enable nextcloud-cron.timer
+enable php8.4-fpm.service
+enable nginx.service
+enable redis-server.service

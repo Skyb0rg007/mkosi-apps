@@ -1,0 +1,21 @@
+[Unit]
+Description=Set up Nextcloud's configuration and database
+Documentation=file:/usr/libexec/nextcloud-setup
+Requires=postgresql-setup@nextcloud.service
+Wants=redis-server.service
+After=postgresql-setup@nextcloud.service redis-server.service
+Before=php8.4-fpm.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=nextcloud
+StateDirectory=nextcloud
+# nginx serves custom_apps/ from here.
+StateDirectoryMode=0755
+ExecStart=/usr/libexec/nextcloud-setup
+# Upgrades of a large instance take a while.
+TimeoutStartSec=infinity
+
+[Install]
+RequiredBy=php8.4-fpm.service

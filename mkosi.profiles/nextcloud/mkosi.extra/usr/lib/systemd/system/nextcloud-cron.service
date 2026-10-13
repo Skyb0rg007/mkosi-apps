@@ -1,0 +1,12 @@
+[Unit]
+Description=Nextcloud cron.php job
+Documentation=https://docs.nextcloud.com/server/latest/admin_manual/configuration_server/background_jobs_configuration.html
+After=nextcloud-setup.service
+
+[Service]
+User=nextcloud
+Environment=NEXTCLOUD_CONFIG_DIR=/var/lib/nextcloud/config
+# Not while in maintenance mode or before an upgrade.
+ExecCondition=php -f /usr/share/nextcloud/occ status -e
+ExecStart=php -f /usr/share/nextcloud/cron.php
+KillMode=process

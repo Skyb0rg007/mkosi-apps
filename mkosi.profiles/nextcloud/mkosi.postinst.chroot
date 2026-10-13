@@ -1,0 +1,5 @@
+#!/bin/sh
+# Drop Debian's default PHP-FPM pool, for www-data; Nextcloud has its own.
+set -e
+
+rm /etc/php/8.4/fpm/pool.d/www.conf

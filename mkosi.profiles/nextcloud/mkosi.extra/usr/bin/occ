@@ -1,0 +1,13 @@
+#!/bin/sh
+# Nextcloud's occ, as the nextcloud user, which owns its configuration, e.g.:
+#
+#     occ status
+#     occ user:resetpassword admin
+set -eu
+
+if [ "$(id -u)" = 0 ]; then
+    exec runuser -u nextcloud -- "$0" "$@"
+fi
+
+export NEXTCLOUD_CONFIG_DIR=/var/lib/nextcloud/config
+exec php /usr/share/nextcloud/occ "$@"

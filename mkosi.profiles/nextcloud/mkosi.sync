@@ -1,0 +1,42 @@
+#!/bin/sh
+# Download Nextcloud's release tarball, verified against the Nextcloud
+# Security key (nextcloud.asc) and its checksum, and unpack it into src/,
+# which the build script installs.
+set -eu
+
+# Upstream version: mkosi.version without its "-<revision>" suffix. The
+# checksum belongs to that version, so update both together.
+version="$(jq -r .ImageVersion "$MKOSI_CONFIG")"
+version="${version%-*}"
+archive="nextcloud-$version.tar.bz2"
+base_url="https://download.nextcloud.com/server/releases"
+sha256=7ed305e880192d804ba83179a19dd22257679608d63161a611ce3f8a918d2aa6
+
+# mkosi runs this script as /work/sync, so paths must come from $SRCDIR.
+profile="$SRCDIR/mkosi.profiles/nextcloud"
+TARGET="$profile/src"
+GPG_KEY="$profile/nextcloud.asc"
+
+if [ "$(cat "$TARGET/.mkosi-version" 2>/dev/null)" = "$version" ]; then
+    echo "nextcloud: $TARGET is $version, skipping download"
+    exit
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+curl --fail --location --output "$tmpdir/$archive" "$base_url/$archive"
+curl --fail --location --output "$tmpdir/$archive.asc" "$base_url/$archive.asc"
+
+# The tools tree has sqv; nextcloud.asc is Nextcloud Security's key,
+# 2880 6A87 8AE4 23A2 8372 792E D758 99B9 A724 937A.
+sqv --keyring "$GPG_KEY" "$tmpdir/$archive.asc" "$tmpdir/$archive" > /dev/null
+printf '%s  %s\n' "$sha256" "$tmpdir/$archive" | sha256sum --check --status
+
+# Extract beside the target and move it into place, so an interrupted run
+# never leaves a partial tree that the check above would mistake for done.
+mkdir "$tmpdir/src"
+tar --extract --bzip2 --file="$tmpdir/$archive" --directory="$tmpdir/src" --strip-components=1
+echo "$version" > "$tmpdir/src/.mkosi-version"
+rm -rf "$TARGET"
+mv "$tmpdir/src" "$TARGET"

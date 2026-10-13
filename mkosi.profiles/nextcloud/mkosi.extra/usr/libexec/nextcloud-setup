@@ -1,0 +1,55 @@
+#!/bin/sh
+# Prepare /var/lib/nextcloud for Nextcloud, as the nextcloud user: link the
+# configuration in /etc/nextcloud into its configuration directory, then
+# either let the web installer run, with the local PostgreSQL filled in, or
+# upgrade Nextcloud to the image's release.
+set -eu
+
+cd /var/lib/nextcloud
+mkdir -p custom_apps
+mkdir -p -m 0750 config
+mkdir -p -m 0770 data
+
+# /etc/nextcloud/*.config.php, the image's and those of confexts. Links to
+# files that are gone are dropped.
+for link in config/*.config.php; do
+    if [ -L "$link" ] && [ "$(dirname "$(readlink "$link")")" = /etc/nextcloud ]; then
+        rm "$link"
+    fi
+done
+for file in /etc/nextcloud/*.config.php; do
+    if [ -e "$file" ]; then
+        ln -s "$file" config/
+    fi
+done
+
+if ! grep -qs "'installed' => true" config/config.php; then
+    # The web installer only runs with CAN_INSTALL there, and takes
+    # autoconfig.php's settings, so it only asks for an admin. It deletes both.
+    touch config/CAN_INSTALL
+    cat > config/autoconfig.php <<'PHP'
+<?php
+// The local PostgreSQL from postgresql-setup@nextcloud.service, over its
+// socket with peer authentication.
+$AUTOCONFIG = [
+	'dbtype' => 'pgsql',
+	'dbname' => 'nextcloud',
+	'dbuser' => 'nextcloud',
+	'dbpass' => '',
+	'dbhost' => '/run/postgresql',
+	'dbtableprefix' => 'oc_',
+	'directory' => '/var/lib/nextcloud/data',
+];
+PHP
+    exit
+fi
+
+# 2: an upgrade is due, after a new release.
+status=0
+occ status --exit-code || status=$?
+if [ "$status" = 2 ]; then
+    occ upgrade --no-interaction
+    occ db:add-missing-columns --no-interaction
+    occ db:add-missing-indices --no-interaction
+    occ db:add-missing-primary-keys --no-interaction
+fi
