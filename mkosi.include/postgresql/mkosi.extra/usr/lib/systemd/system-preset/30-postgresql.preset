@@ -1,0 +1,9 @@
+# postgresql-common's archiving and backups are opt-in, as Debian leaves them:
+# with nothing configured, WAL streaming fails, and the timers would fill /var
+# with base backups and dumps. A machine's first boot otherwise enables them
+# with everything else (see 20-debian.preset), into every cluster's
+# postgresql@.service.
+disable pg_receivewal@.service
+disable pg_compresswal@.timer
+disable pg_basebackup@.timer
+disable pg_dump@.timer
