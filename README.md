@@ -7,10 +7,16 @@ run as its own `systemd-nspawn` container, without root.
 | App | |
 |---|---|
 | [homebox](mkosi.profiles/homebox/README.md) | Homebox inventory manager |
+| [jellyfin](mkosi.profiles/jellyfin/README.md) | Jellyfin media server |
+| [karakeep](mkosi.profiles/karakeep/README.md) | Karakeep bookmark manager, with Meilisearch and headless Chromium |
 | [miniflux](mkosi.profiles/miniflux/README.md) | Miniflux feed reader, with PostgreSQL |
+| [netbox](mkosi.profiles/netbox/README.md) | NetBox, with PostgreSQL and Redis |
+| [nextcloud](mkosi.profiles/nextcloud/README.md) | Nextcloud server, with PostgreSQL and Redis |
+| [paperless](mkosi.profiles/paperless/README.md) | Paperless-ngx document management, with Redis |
 | [soju](mkosi.profiles/soju/README.md) | soju IRC bouncer, with the gamja web client |
 | [victoriametrics](mkosi.profiles/victoriametrics/README.md) | VictoriaMetrics, with vmagent, vmalert and vmauth |
 | [victorialogs](mkosi.profiles/victorialogs/README.md) | VictoriaLogs |
+| [wakapi](mkosi.profiles/wakapi/README.md) | Wakapi coding statistics |
 
 How it all fits together, and why, is in [docs/design.md](docs/design.md).
 
@@ -48,7 +54,8 @@ change to the image, bump the revision.
 The machine is `~/.local/state/machines/<app>.mstack/` (as root,
 `/var/lib/machines/`): the image provides `/usr`, read-only, and everything
 else, the app's data included, lives in its `root/`. An app is reached from
-the host as `<app>._dhcp`, on its usual ports, and
+the host as `<app>._dhcp`, on its usual ports, or as `<app>`, through
+`nss-mymachines`; Django apps (netbox, paperless) refuse the former. Then
 `machinectl [--user] shell <app>` gives a root shell in it.
 
 To roll back, rename the newest version in `layer@0.v/` to a name it ignores,

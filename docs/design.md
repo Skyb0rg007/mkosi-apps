@@ -61,8 +61,9 @@ Following [ParticleOS](https://github.com/systemd/particleos), the images'
   `tmpfiles.d/etc.conf` in minimal-base, plus a file per app for its own
   configuration, symlinks entries of it into `/etc`. Being links, they follow
   the image on upgrades; a confext overrides them. Apps whose directories a
-  confext may add files to (soju, VictoriaMetrics) are linked file by file,
-  since a confext's directory hides a lower layer's link to a whole directory.
+  confext may add files to (soju, VictoriaMetrics, NetBox, Nextcloud) are
+  linked file by file, since a confext's directory hides a lower layer's link
+  to a whole directory.
 - `systemd-sysusers` creates the users, Debian's `www-data` included. Users
   that Debian's postinsts create, such as `postgres` or `redis`, get a
   `sysusers.d` entry of their own, and directories they create in `/var` a
@@ -157,6 +158,22 @@ script runs without network and reads only that cache. For Go (`soju`) the
 cache is go's module proxy layout, served to the build as `GOPROXY=file://…`
 with `-mod=readonly`. The tools tree's `golang-go` fetches (sync scripts run
 there); the image's own `golang-go` from `BuildPackages=` compiles.
+
+Python apps (netbox, paperless) install into a virtualenv from wheels.
+`mkosi.include/python/download-wheels` downloads those a hashed lockfile pins
+into `mkosi.cache/wheels/`, with the tools tree's pip, for the image's CPython
+and glibc, binary wheels only; `install-wheels` installs them offline,
+checking the hashes again. When upstream has no such lockfile, the app's
+`update-requirements` resolves one from upstream's pins with uv, from the dev
+shell, and the result is committed as `requirements.lock`. Packages only
+published as source are left out where there is an alternative, such as
+psycopg's binary or pure-Python implementation for its C one; pure-Python ones
+are built from source with Debian's setuptools.
+
+Apps released as built artifacts only are installed from those: release
+binaries (homebox, wakapi, VictoriaMetrics), upstream's Debian packages
+(jellyfin, miniflux), and for karakeep the layers of upstream's container
+image that hold the app, by digest.
 
 ## Host setup details
 
