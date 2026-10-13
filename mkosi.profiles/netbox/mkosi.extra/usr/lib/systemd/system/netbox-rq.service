@@ -1,0 +1,20 @@
+[Unit]
+Description=NetBox Request Queue Worker
+Documentation=https://docs.netbox.dev/
+Requires=netbox-setup.service
+After=netbox-setup.service
+
+[Service]
+User=netbox
+Group=netbox
+Environment=PYTHONPATH=/etc/netbox
+Environment=NETBOX_CONFIGURATION=configuration
+Environment=PYTHONDONTWRITEBYTECODE=1
+WorkingDirectory=/usr/lib/netbox
+ExecStart=/usr/lib/netbox/venv/bin/python3 /usr/lib/netbox/netbox/manage.py rqworker high default low
+PrivateTmp=yes
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

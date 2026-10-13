@@ -1,0 +1,21 @@
+[Unit]
+Description=NetBox WSGI Service
+Documentation=https://docs.netbox.dev/
+Requires=netbox-setup.service
+After=netbox-setup.service
+
+[Service]
+User=netbox
+Group=netbox
+Environment=PYTHONPATH=/etc/netbox
+Environment=NETBOX_CONFIGURATION=configuration
+Environment=PYTHONDONTWRITEBYTECODE=1
+WorkingDirectory=/usr/lib/netbox
+# Upstream's gunicorn.py, which binds 127.0.0.1:8001, behind nginx.
+ExecStart=/usr/lib/netbox/venv/bin/gunicorn --pythonpath /usr/lib/netbox/netbox --config /usr/lib/netbox/contrib/gunicorn.py netbox.wsgi
+PrivateTmp=yes
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

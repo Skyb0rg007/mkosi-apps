@@ -1,0 +1,15 @@
+#!/bin/sh
+# NetBox's manage.py, as the netbox user, with the image's configuration, e.g.:
+#
+#     netbox-manage createsuperuser
+#     netbox-manage nbshell
+set -eu
+
+if [ "$(id -u)" = 0 ]; then
+    exec runuser -u netbox -- "$0" "$@"
+fi
+
+export PYTHONPATH=/etc/netbox
+export NETBOX_CONFIGURATION=configuration
+export PYTHONDONTWRITEBYTECODE=1
+exec /usr/lib/netbox/venv/bin/python3 /usr/lib/netbox/netbox/manage.py "$@"

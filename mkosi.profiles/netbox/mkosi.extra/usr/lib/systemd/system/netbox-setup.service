@@ -1,0 +1,16 @@
+[Unit]
+Description=Set up NetBox's secrets and database
+Documentation=file:/usr/libexec/netbox-setup
+Requires=postgresql-setup@netbox.service
+Wants=redis-server.service
+After=postgresql-setup@netbox.service redis-server.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=netbox
+StateDirectory=netbox
+StateDirectoryMode=0750
+ExecStart=/usr/libexec/netbox-setup
+# Migrations of a large database take a while.
+TimeoutStartSec=infinity

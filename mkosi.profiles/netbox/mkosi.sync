@@ -1,0 +1,42 @@
+#!/bin/sh
+# Fetch step: the only part of the NetBox build that touches the network.
+#
+# Downloads the release tarball, verified against its pinned checksum, then
+# the wheels requirements.lock pins, verified against its hashes, into a cache
+# that the build script installs from offline (see mkosi.build.chroot).
+set -eu
+
+# Upstream version: mkosi.version without its "-<revision>" suffix. The
+# checksum belongs to that version, so update both together, and then
+# requirements.lock with update-requirements.
+version="$(jq -r .ImageVersion "$MKOSI_CONFIG")"
+version="${version%-*}"
+archive="v$version.tar.gz"
+url="https://github.com/netbox-community/netbox/archive/refs/tags/$archive"
+# The archive GitHub generates for the tag comes with no checksum or
+# signature, so pinning one here is all the verification there is.
+sha256=3dba895bb7d43d03b7f2f517f3bc7e5edcba7e515ff9e7b7011a6afe983940cd
+
+# mkosi runs this script as /work/sync, so paths must come from $SRCDIR.
+profile="$SRCDIR/mkosi.profiles/netbox"
+TARGET="$profile/src"
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+if [ "$(cat "$TARGET/.mkosi-version" 2>/dev/null)" = "$version" ]; then
+    echo "netbox: $TARGET is $version, skipping download"
+else
+    curl --fail --location --output "$tmpdir/$archive" "$url"
+    printf '%s  %s\n' "$sha256" "$tmpdir/$archive" | sha256sum --check --status
+
+    # Extract beside the target and move it into place, so an interrupted run
+    # never leaves a partial tree that the check above would mistake for done.
+    mkdir "$tmpdir/src"
+    tar --extract --gunzip --file="$tmpdir/$archive" --directory="$tmpdir/src" --strip-components=1
+    echo "$version" > "$tmpdir/src/.mkosi-version"
+    rm -rf "$TARGET"
+    mv "$tmpdir/src" "$TARGET"
+fi
+
+"$SRCDIR/mkosi.include/python/download-wheels" "$profile/requirements.lock"

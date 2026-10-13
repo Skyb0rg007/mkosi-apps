@@ -1,0 +1,27 @@
+#!/bin/sh
+# Prepare /var/lib/netbox for NetBox, as the netbox user: generate the secrets
+# configuration.py reads, once, and after a new release do what upstream's
+# upgrade.sh does to the database. Everything else upgrade.sh does happened in
+# the image's build.
+set -eu
+
+cd /var/lib/netbox
+
+# 50 characters from the set NetBox's generate_secret_key.py uses.
+if [ ! -d secrets ]; then
+    mkdir -m 0700 secrets.tmp
+    for name in secret_key api_token_pepper; do
+        python3 -c 'import secrets
+chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*(-_=+)"
+print("".join(secrets.choice(chars) for _ in range(50)))' > "secrets.tmp/$name"
+    done
+    mv secrets.tmp secrets
+fi
+
+mkdir -p media reports scripts
+
+if ! cmp -s /usr/lib/netbox/netbox/release.yaml release.yaml; then
+    netbox-manage upgrade --no-input --skip-static
+    netbox-manage rebuild_config_context_cache
+    cp /usr/lib/netbox/netbox/release.yaml release.yaml
+fi

@@ -1,0 +1,27 @@
+#!/bin/sh
+# Regenerate requirements.lock, the hashed lockfile that mkosi.sync downloads
+# wheels from, after a NetBox upgrade. Run from the dev shell, which has uv,
+# after a build has run mkosi.sync to unpack the new release into src/.
+#
+# NetBox pins only its direct dependencies, in requirements.txt; this resolves
+# the rest for the image's Python and glibc, wheels only, and hashes them all.
+# It resolves them as of the release date, which keeps out releases NetBox
+# has not met, and makes the result repeatable. psycopg's C implementation is
+# only published as an sdist, so it is swapped for its binary wheel.
+set -eu
+
+cd "$(dirname "$0")"
+
+published="$(sed -n 's/^published: "\(.*\)"$/\1/p' src/netbox/release.yaml)"
+
+sed 's/^psycopg\[c,pool\]==/psycopg[binary,pool]==/' src/requirements.txt |
+    uv pip compile \
+        --python-version 3.13 \
+        --python-platform x86_64-manylinux_2_40 \
+        --only-binary :all: \
+        --exclude-newer "${published}T23:59:59Z" \
+        --generate-hashes \
+        --no-header \
+        --quiet \
+        --output-file requirements.lock \
+        -

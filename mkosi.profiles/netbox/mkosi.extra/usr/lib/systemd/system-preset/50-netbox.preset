@@ -1,0 +1,4 @@
+enable netbox.service
+enable netbox-rq.service
+enable nginx.service
+enable redis-server.service

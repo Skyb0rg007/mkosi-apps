@@ -1,0 +1,40 @@
+#!/bin/sh
+# Build step: offline. Installs NetBox into /usr/lib/netbox with a virtualenv
+# from the wheels mkosi.sync downloaded, then builds what upgrade.sh would
+# build in the installation directory: the documentation and the static
+# files. All of it is made at its final path, which the virtualenv records,
+# and copied from there into the image.
+set -eu
+
+src="$SRCDIR/mkosi.profiles/netbox/src"
+lib=/usr/lib/netbox
+
+mkdir "$lib"
+cp -R "$src/netbox" "$src/contrib" "$src/LICENSE.txt" "$src/NOTICE" "$lib/"
+
+"$SRCDIR/mkosi.include/python/install-wheels" "$lib/venv" "$SRCDIR/mkosi.profiles/netbox/requirements.lock"
+
+# The documentation NetBox serves under /static/docs/, which zensical builds
+# into project-static from sources that do not ship.
+cp -R "$src/docs" "$src/mkdocs.yml" "$lib/"
+(cd "$lib" && venv/bin/zensical build)
+rm -r "$lib/docs" "$lib/mkdocs.yml"
+
+# collectstatic needs a configuration, though no database or Redis behind it.
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+cat > "$tmpdir/build_configuration.py" <<'EOF'
+ALLOWED_HOSTS = []
+DATABASES = {"default": {"ENGINE": "django.db.backends.postgresql", "NAME": "netbox"}}
+REDIS = {"tasks": {"HOST": "localhost"}, "caching": {"HOST": "localhost"}}
+SECRET_KEY = "build-only-" + "x" * 50
+API_TOKEN_PEPPERS = {1: "build-only-" + "x" * 50}
+EOF
+PYTHONPATH="$tmpdir" NETBOX_CONFIGURATION=build_configuration \
+    "$lib/venv/bin/python3" "$lib/netbox/manage.py" collectstatic --no-input --verbosity=0
+
+# /usr is read-only on the machines, so compile the bytecode now.
+"$lib/venv/bin/python3" -m compileall -q "$lib/netbox"
+
+mkdir -p "$DESTDIR/usr/lib"
+cp -a "$lib" "$DESTDIR/usr/lib/netbox"
