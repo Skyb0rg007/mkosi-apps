@@ -136,21 +136,31 @@ scripts; upstream does not sign them. They build with a newer Go than trixie's.
 
 ### Changing an app's configuration
 
-A machine's `/etc` is its own (see [Running the apps](#running-the-apps)), with
-the image's configuration linked in from `/usr/share/factory/etc`, so that it
-follows upgrades. To change some, replace the link with a copy, edit it, and
-reload or restart the service:
+A machine's `/etc` starts out with the image's defaults (see
+[/usr is enough to boot](#usr-is-enough-to-boot)). Changes come as
+configuration extensions, which `systemd-confext` merges over `/etc` on boot: a
+directory, or a `.raw` image, in `/var/lib/confexts/` or `/run/confexts/`, with
+a release file named after it. Its files replace or add to those in `/etc`:
 
     machinectl [--user] shell victoriametrics
-    rm /etc/victoriametrics
-    cp -a /usr/share/factory/etc/victoriametrics /etc/
-    # edit /etc/victoriametrics/scrape.yml, rules/*.yml, ...
-    systemctl reload victoria-metrics  # or restart, or start vmalert, ...
+    d=/var/lib/confexts/local
+    mkdir -p $d/etc/extension-release.d $d/etc/victoriametrics/rules
+    echo ID=_any > $d/etc/extension-release.d/extension-release.local
+    # add $d/etc/victoriametrics/rules/*.yml, scrape.yml, vmalert.env, ...
+    systemctl restart systemd-confext
+    systemctl restart victoria-metrics vmalert  # or reload, or start, ...
 
-A copy no longer follows upgrades, so compare it with the factory's after one.
-Files that the image does not ship but an app reads if present, such as
-`/etc/homebox.conf` or `/etc/victoriametrics/vmalert.env`, only need creating
-(in a copied directory, for the latter). Secrets can still come as system
+Restart `systemd-confext.service` rather than running `systemd-confext
+refresh`: its drop-in in minimal-base keeps `/etc` writable while confexts are
+merged, with writes landing in `/var/lib/extensions.mutable/etc/`, above the
+confexts. Without it the merge is read-only, and inside these containers the
+writable merge needs mount options other than systemd's defaults (`userxattr`
+instead of `redirect_dir=on`, which overlayfs refuses in a user namespace).
+
+A file from a confext no longer follows the image on upgrades. soju's and
+VictoriaMetrics' configuration is linked into `/etc` file by file, so a confext
+can replace or add single files there; nginx's `/etc/nginx` is linked whole, so
+a confext changing it has to carry all of it. Secrets can still come as system
 credentials, which the services import as `<app>.*`, for flags and config
 fields that take a file path, e.g.
 `/run/credentials/vmalert.service/victoriametrics.token`.
@@ -319,7 +329,8 @@ Following [ParticleOS](https://github.com/systemd/particleos), the images'
 - `mkosi.finalize` copies each image's `/etc` to `/usr/share/factory/etc`, and
   `tmpfiles.d/etc.conf` in minimal-base, plus a file per app for its own
   configuration, symlinks entries of it into `/etc`. Being links, they follow
-  the image on upgrades; replacing one with a copy customizes it.
+  the image on upgrades; a confext overrides them (see
+  [Changing an app's configuration](#changing-an-apps-configuration)).
 - `systemd-sysusers` creates the users, Debian's `www-data` included.
 - The first boot applies the presets, which also switch on units that
   Debian's packages only enable in their postinst; `20-debian.preset` turns
@@ -333,6 +344,18 @@ Following [ParticleOS](https://github.com/systemd/particleos), the images'
 
 `mkosi boot` runs the whole image, whose own `/etc` is already populated; there
 all of this is a no-op.
+
+### systemd from OBS
+
+The images take systemd from its stable branch built for trixie on
+[OBS](https://build.opensuse.org/project/show/system:systemd:stable), through
+`mkosi.sandbox/`, as ParticleOS can: trixie's systemd 257 cannot keep `/etc`
+writable with a confext merged in a user namespace, which takes
+`SYSTEMD_CONFEXT_OVERLAYFS_MOUNT_OPTIONS` (systemd 259). Its `debian.conf`
+copies a two-file `/etc/pam.d` from its own factory, which would hide Debian's
+PAM configuration, so minimal-base's postinst drops that line, as ParticleOS
+does. A change to the repository's packages takes `mkosi -ff build`, since the
+incremental cache otherwise keeps the packages it has.
 
 ### Every file is owned by image root
 
