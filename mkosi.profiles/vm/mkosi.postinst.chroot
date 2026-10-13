@@ -1,0 +1,35 @@
+#!/bin/sh
+# Install the systemd-sysupdate transfers in sysupdate.d/ for the update server
+# at $SYSUPDATE_URL, and the OpenPGP certificate import-pubring.pgp beside this
+# script, which signs its SHA256SUMS, for systemd-pull to verify them with.
+# Both come from the local configuration (see docs/vm.md). Without
+# $SYSUPDATE_URL, the image has its A/B layout but nothing to update from.
+set -e
+
+profile="$SRCDIR/mkosi.profiles/vm"
+
+if [ -z "${SYSUPDATE_URL:-}" ]; then
+    echo "vm: no SYSUPDATE_URL, not setting up systemd-sysupdate"
+    exit
+fi
+
+if [ ! -s "$profile/import-pubring.pgp" ]; then
+    echo "vm: $profile/import-pubring.pgp is missing: systemd-sysupdate needs the certificate that signs the updates"
+    exit 1
+fi
+
+mkdir -p /usr/lib/sysupdate.d
+for transfer in "$profile"/sysupdate.d/*.transfer; do
+    sed "s|@SYSUPDATE_URL@|${SYSUPDATE_URL%/}|" "$transfer" > "/usr/lib/sysupdate.d/$(basename "$transfer")"
+done
+
+# In /etc, where systemd-pull also looks, so that /usr/lib keeps the
+# systemd-container package's keyring, if it has one; tmpfiles.d links it into
+# a machine's /etc.
+install -D --mode=0644 "$profile/import-pubring.pgp" /etc/systemd/import-pubring.pgp
+
+# Look for updates, and reboot into them, on the units' schedules.
+cat > /usr/lib/systemd/system-preset/40-sysupdate.preset <<PRESET
+enable systemd-sysupdate-update.timer
+enable systemd-sysupdate-reboot.timer
+PRESET

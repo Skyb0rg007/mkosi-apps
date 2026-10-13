@@ -29,7 +29,7 @@ shell (`nix develop`):
 
     mkosi --profile=soju build          # mkosi.output/soju_0.10.1-1/
     mkosi --profile=soju boot           # try it, on a throwaway copy
-    mkosi --profile=soju,vm build       # a disk for systemd-vmspawn, in mkosi.output/vm/
+    mkosi --profile=soju,vm build       # a VM disk, in mkosi.output/vm/
 
 `mkosi boot` names the machine after the app, like an installed one, which has
 to be stopped first.
@@ -65,6 +65,10 @@ owned by the foreign UID range; as root `rm -rf` deletes one, otherwise:
 
     mkosi-sandbox --ro-bind / / --tmpfs /tmp --bind-foreign "$dir" /tmp/dir \
         --become-root -- find /tmp/dir -mindepth 1 -delete && rmdir "$dir"
+
+An app can also run as a VM, from the `vm` profile's disk image, which
+updates itself from a server through `systemd-sysupdate`, with A/B partitions;
+see [docs/vm.md](docs/vm.md).
 
 ## Configuring
 

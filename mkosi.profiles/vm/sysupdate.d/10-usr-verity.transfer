@@ -1,0 +1,18 @@
+# Template: mkosi.postinst.chroot installs it into /usr/lib/sysupdate.d with
+# the URL from $SYSUPDATE_URL. A new version's verity hashes, into the slot
+# that does not hold the booted version.
+[Transfer]
+ProtectVersion=%A
+
+[Source]
+Type=url-file
+Path=@SYSUPDATE_URL@/%M/
+MatchPattern=%M_@v.usr-%a-verity.@u.raw.zst
+
+[Target]
+Type=partition
+Path=auto
+MatchPattern=%M_@v_verity
+MatchPartitionType=usr-verity
+PartitionFlags=0
+ReadOnly=1

@@ -8,3 +8,6 @@ mkosi.tools
 mkosi.tools.manifest
 
 /apps
+
+# Local settings, such as SYSUPDATE_URL (see docs/vm.md).
+mkosi.local.conf

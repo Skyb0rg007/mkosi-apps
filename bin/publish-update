@@ -1,0 +1,61 @@
+#!/bin/sh
+# publish-update OUTPUT KEY DIR
+#
+# Publish a build of an app's vm profile as an update for systemd-sysupdate,
+# into DIR/<app>/, which the update server serves as $SYSUPDATE_URL/<app>/
+# (see docs/vm.md):
+#
+#     bin/publish-update mkosi.output/vm/soju_0.10.1-2 updates.key /srv/updates
+#
+# OUTPUT is the build's disk image without .raw. Its /usr partition and verity
+# hashes are added compressed, and its UKI as it is. The directory's SHA256SUMS
+# lists every version in it, since systemd-sysupdate finds versions there, so
+# it is rewritten and signed again with the OpenPGP key KEY, with sqop from
+# the dev shell. An earlier build of the same version is replaced: its
+# partitions' names differ, and a machine must never mix them with this build's
+# UKI. Older versions stay until removed by hand.
+set -eu
+
+if [ $# -ne 3 ]; then
+    echo "usage: $0 OUTPUT KEY DIR" >&2
+    exit 2
+fi
+
+output="${1%.raw}"
+key="$2"
+name="$(basename "$output")"
+app="${name%%_*}"
+dir="$3/$app"
+
+# The UKI's usrhash= is the verity root hash, whose two halves are the UUIDs of
+# the /usr partition and its verity partition, which the split partitions'
+# names end in. mkosi.output/vm keeps those of earlier builds of the version,
+# which have other UUIDs.
+usrhash="$(grep --text --only-matching --max-count=1 'usrhash=[0-9a-f]\{64\}' "$output.efi" 2>/dev/null | head -n 1 | cut -d= -f2)"
+if [ -z "$usrhash" ]; then
+    echo "$output.efi: no UKI with usrhash=; build it with the vm profile" >&2
+    exit 1
+fi
+usr_uuid="$(echo "$usrhash" | cut -c1-32)"
+verity_uuid="$(echo "$usrhash" | cut -c33-64)"
+set -- "$output".usr-*-verity."$verity_uuid".raw "$output".usr-*."$usr_uuid".raw
+for partition in "$@"; do
+    if [ ! -e "$partition" ]; then
+        echo "$output: no split partitions for usrhash=$usrhash" >&2
+        exit 1
+    fi
+done
+
+mkdir -p "$dir"
+rm -f "$dir/$name".*
+for partition in "$@"; do
+    zstd --quiet --force -T0 -o "$dir/$(basename "$partition").zst" "$partition"
+done
+cp "$output.efi" "$dir/"
+
+cd "$dir"
+find . -maxdepth 1 -type f ! -name 'SHA256SUMS*' -printf '%P\n' | sort | xargs sha256sum > SHA256SUMS.tmp
+sqop sign < SHA256SUMS.tmp "$key" > SHA256SUMS.gpg.tmp
+mv SHA256SUMS.tmp SHA256SUMS
+mv SHA256SUMS.gpg.tmp SHA256SUMS.gpg
+echo "$app: published $name in $dir"
