@@ -1,0 +1,12 @@
+#!/bin/sh
+# Jellyfin writes its configuration directory itself, from the web UI: its
+# settings, users' display preferences, plugin configuration. That is state, so
+# keep it in /var next to the database, as upstream's container image does.
+set -e
+
+sed -i 's|^JELLYFIN_CONFIG_DIR=.*|JELLYFIN_CONFIG_DIR="/var/lib/jellyfin/config"|' /etc/default/jellyfin
+grep -qx 'JELLYFIN_CONFIG_DIR="/var/lib/jellyfin/config"' /etc/default/jellyfin
+
+# Debian's logging.json does not follow; without one, Jellyfin writes its own
+# default there, which also logs to the journal and to /var/log/jellyfin.
+rm -r /etc/jellyfin

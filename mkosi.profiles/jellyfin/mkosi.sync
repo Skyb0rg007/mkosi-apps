@@ -1,0 +1,36 @@
+#!/bin/sh
+# Download upstream's Debian packages for trixie: the server, its web client,
+# and Jellyfin's own ffmpeg build.
+set -eu
+
+# Upstream version: mkosi.version without its "-<revision>" suffix. The
+# checksums belong to that version, so update them together. jellyfin-ffmpeg
+# has versions of its own; bumping it is an image-only change.
+version="$(jq -r .ImageVersion "$MKOSI_CONFIG")"
+version="${version%-*}"
+ffmpeg_version=8.1.1-1
+pool=https://repo.jellyfin.org/debian/pool/main
+# From the repository's Packages index for trixie, whose Release file upstream
+# signs; the pins are what this script checks.
+debs="
+j/jellyfin/jellyfin-server_${version}+deb13_amd64.deb 03fc857287c0b263e191e1e73572a456885f286734cf7f686dc4ed2195cc6d08
+j/jellyfin/jellyfin-web_${version}+deb13_all.deb b622ee032cde9db2da1d5945d4b0e11f7a5c38cea0f4a0ac581bc0ac27f3524f
+j/jellyfin-ffmpeg/jellyfin-ffmpeg8_${ffmpeg_version}-trixie_amd64.deb 039a37aba747fd97cc05e2dfa80ba6b6253848b741f5bf854f4c33807a2bff41
+"
+
+mkdir -p "$SRCDIR/mkosi.packages"
+
+echo "$debs" | while read -r path sha256; do
+    [ -n "$path" ] || continue
+    deb="$(basename "$path")"
+    if [ -e "$SRCDIR/mkosi.packages/$deb" ]; then
+        echo "jellyfin: $deb exists, skipping"
+        continue
+    fi
+
+    tmp="$SRCDIR/mkosi.packages/$deb.tmp"
+    trap 'rm -f "$tmp"' EXIT
+    curl --fail --location --output "$tmp" "$pool/$path"
+    printf '%s  %s\n' "$sha256" "$tmp" | sha256sum --check --status
+    mv "$tmp" "$SRCDIR/mkosi.packages/$deb"
+done
