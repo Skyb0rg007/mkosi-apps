@@ -1,0 +1,11 @@
+#!/bin/sh
+# From ParticleOS: the systemd packages from OBS copy their own two-file
+# /usr/share/factory/etc/pam.d to /etc/pam.d. Debian's PAM configuration
+# includes from /etc/pam.d, which minimal-base's etc-debian.conf links to
+# /usr/lib/pam.d. Here rather than in minimal-base, since an app's packages can
+# pull in a newer systemd than the base has, which restores the line.
+set -e
+
+if [ -f /usr/lib/tmpfiles.d/debian.conf ]; then
+    sed -i '/\/etc\/pam.d/d' /usr/lib/tmpfiles.d/debian.conf
+fi

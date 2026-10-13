@@ -64,6 +64,9 @@ Following [ParticleOS](https://github.com/systemd/particleos), the images'
   confext may add files to (soju, VictoriaMetrics) are linked file by file,
   since a confext's directory hides a lower layer's link to a whole directory.
 - `systemd-sysusers` creates the users, Debian's `www-data` included.
+- minimal-base's own files are copied again into every app image, after the
+  app's packages: those can upgrade minimal-base's packages, which would
+  overwrite files it replaces, such as systemd's `tmpfiles.d/etc.conf`.
 - The first boot applies the presets, which also switch on units that
   Debian's packages only enable in their postinst; `20-debian.preset` turns
   the unwanted ones off again.
@@ -95,7 +98,9 @@ The images take systemd from its stable branch built for trixie on
 `mkosi.sandbox/`, as ParticleOS can: `SYSTEMD_CONFEXT_OVERLAYFS_MOUNT_OPTIONS`
 needs systemd 259, and trixie has 257. Its `debian.conf` copies a two-file
 `/etc/pam.d` from its own factory, which would hide Debian's PAM
-configuration, so minimal-base's postinst drops that line, as ParticleOS does.
+configuration, so the top-level `mkosi.postinst.chroot` drops that line, as
+ParticleOS does, in every app image, since an app's packages can upgrade
+systemd's.
 A change to the repository's packages takes `mkosi -ff build`, since the
 incremental cache otherwise keeps the packages it has.
 
