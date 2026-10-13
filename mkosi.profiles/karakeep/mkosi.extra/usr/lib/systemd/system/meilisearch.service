@@ -1,0 +1,21 @@
+[Unit]
+Description=Meilisearch, Karakeep's search engine
+Documentation=https://www.meilisearch.com/docs
+Requires=karakeep-secret.service
+After=karakeep-secret.service
+
+[Service]
+DynamicUser=yes
+StateDirectory=meilisearch
+EnvironmentFile=/var/lib/karakeep-secret/secret.env
+Environment=MEILI_DB_PATH=/var/lib/meilisearch/data.ms
+Environment=MEILI_DUMP_DIR=/var/lib/meilisearch/dumps
+Environment=MEILI_SNAPSHOT_DIR=/var/lib/meilisearch/snapshots
+Environment=MEILI_HTTP_ADDR=127.0.0.1:7700
+Environment=MEILI_ENV=production
+Environment=MEILI_NO_ANALYTICS=true
+ExecStart=/usr/bin/meilisearch
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

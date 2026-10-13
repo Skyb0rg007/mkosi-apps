@@ -1,0 +1,4 @@
+enable karakeep-web.service
+enable karakeep-workers.service
+enable karakeep-browser.service
+enable meilisearch.service

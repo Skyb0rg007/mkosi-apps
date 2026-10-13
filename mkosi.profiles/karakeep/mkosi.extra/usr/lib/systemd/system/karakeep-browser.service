@@ -1,0 +1,24 @@
+[Unit]
+Description=Headless Chromium for Karakeep's crawler
+After=network.target
+
+[Service]
+DynamicUser=yes
+RuntimeDirectory=karakeep-browser
+Environment=HOME=/run/karakeep-browser
+# As upstream's chromedp/headless-shell, also without its sandbox, which needs
+# user namespaces of its own. DevTools on localhost only.
+ExecStart=/usr/bin/chromium-headless-shell \
+        --no-sandbox \
+        --disable-gpu \
+        --disable-dev-shm-usage \
+        --hide-scrollbars \
+        --disable-blink-features=AutomationControlled \
+        --window-size=1440,900 \
+        --user-data-dir=/run/karakeep-browser \
+        --remote-debugging-address=127.0.0.1 \
+        --remote-debugging-port=9222
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

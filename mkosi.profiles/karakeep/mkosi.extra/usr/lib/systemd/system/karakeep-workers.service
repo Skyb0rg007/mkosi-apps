@@ -1,0 +1,25 @@
+[Unit]
+Description=Karakeep workers
+Documentation=https://docs.karakeep.app/
+Requires=karakeep-migrate.service karakeep-secret.service
+After=karakeep-migrate.service karakeep-secret.service
+Wants=meilisearch.service karakeep-browser.service
+After=meilisearch.service karakeep-browser.service
+
+[Service]
+User=karakeep
+StateDirectory=karakeep
+CacheDirectory=karakeep/ocr
+EnvironmentFile=/usr/lib/karakeep/karakeep.env
+EnvironmentFile=/usr/lib/karakeep/version.env
+EnvironmentFile=/var/lib/karakeep-secret/secret.env
+EnvironmentFile=-/etc/karakeep.conf
+# Node.js, which the workers also run, and monolith.
+Environment=PATH=/usr/lib/karakeep/bin:/usr/bin
+WorkingDirectory=/usr/lib/karakeep/apps/workers
+ExecStart=/usr/lib/karakeep/bin/node dist/index.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+[Unit]
+Description=Karakeep database migrations
+Documentation=https://docs.karakeep.app/
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=karakeep
+StateDirectory=karakeep
+EnvironmentFile=/usr/lib/karakeep/karakeep.env
+EnvironmentFile=-/etc/karakeep.conf
+WorkingDirectory=/usr/lib/karakeep/db_migrations
+ExecStart=/usr/lib/karakeep/bin/node index.js
+TimeoutStartSec=infinity

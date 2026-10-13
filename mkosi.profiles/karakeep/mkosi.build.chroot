@@ -1,0 +1,23 @@
+#!/bin/sh
+# Install what mkosi.sync downloaded: Karakeep and Node.js into
+# /usr/lib/karakeep, with modes that its users can read whatever the
+# checkout's umask, and Meilisearch.
+set -eu
+
+dist="$SRCDIR/mkosi.profiles/karakeep/dist"
+lib="$DESTDIR/usr/lib/karakeep"
+
+mkdir -p "$lib/bin"
+cp -R "$dist/app/." "$lib/"
+cp -R "$dist/db_migrations" "$lib/db_migrations"
+install --mode=0755 "$dist/node/bin/node" "$dist/monolith" "$lib/bin/"
+install -D --mode=0644 "$dist/node/LICENSE" "$DESTDIR/usr/share/doc/karakeep/node/LICENSE"
+install -D --mode=0755 "$dist/meilisearch" "$DESTDIR/usr/bin/meilisearch"
+chmod -R u+rwX,go+rX,go-w "$lib"
+
+# The web server's cache, from its pages and images, which Next.js writes
+# into its build.
+ln -s /var/cache/karakeep/next "$lib/apps/web/.next/cache"
+
+# Shown in the web UI.
+echo "SERVER_VERSION=$(cat "$dist/version")" > "$lib/version.env"
