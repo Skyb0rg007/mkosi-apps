@@ -67,6 +67,9 @@ Following [ParticleOS](https://github.com/systemd/particleos), the images'
 - minimal-base's own files are copied again into every app image, after the
   app's packages: those can upgrade minimal-base's packages, which would
   overwrite files it replaces, such as systemd's `tmpfiles.d/etc.conf`.
+- `libnss-myhostname` resolves `localhost` without an `/etc/hosts`, before
+  `systemd-resolved` runs, and `libnss-systemd` the users of `DynamicUser=`;
+  Debian's `nsswitch.conf` names both, but only their packages provide them.
 - The first boot applies the presets, which also switch on units that
   Debian's packages only enable in their postinst; `20-debian.preset` turns
   the unwanted ones off again.
