@@ -9,11 +9,15 @@
 # systemd-nspawn@.service looks. A new machine also gets the profile's settings
 # file, with a machine ID of its own.
 #
+# The machine boots the newest version's /usr, read-only, under root/, which
+# holds everything else: /etc, starting out empty, and /var. A machine from
+# before root/ has its /var in bind@var/, which moves into root/var/.
+#
 # What nspawn mounts is owned by the foreign UID range, like the build: the
-# versions, layer@1/ and bind@var/. Without root, systemd-mountfsd creates
-# those directories and mkosi-sandbox copies into them. Their parents stay
-# owned by the user, since mountfsd only mounts a foreign-owned directory for
-# an unprivileged client if the client owns its parent.
+# versions, layer@1/ and root/. Without root, systemd-mountfsd creates those
+# directories and mkosi-sandbox copies into them. Their parents stay owned by
+# the user, since mountfsd only mounts a foreign-owned directory for an
+# unprivileged client if the client owns its parent.
 set -eu
 
 foreign=2147352576
@@ -67,9 +71,39 @@ mkdir_foreign() {
 }
 
 mkdir -p "$machine/layer@0.v"
-for dir in layer@1 bind@var; do
+for dir in layer@1 root; do
     [ -d "$machine/$dir" ] || mkdir_foreign "$machine" "$dir"
 done
+
+if [ -d "$machine/bind@var" ]; then
+    # The users and groups that own the data come along from the version the
+    # machine ran: Debian's postinsts allocate some of them, at IDs that
+    # systemd-sysusers would not give out again in an empty /etc.
+    previous="$(find "$machine/layer@0.v" -mindepth 1 -maxdepth 1 -name 'layer@0_*' | sort -V | tail -n 1)"
+    # shellcheck disable=SC2016 # expanded by the sh -c below
+    move='set -e
+mkdir -p "$2/etc" "$2/var"
+for f in passwd group shadow gshadow; do
+    cp -a "$3/etc/$f" "$2/etc/"
+done
+cp -a "$1/." "$2/var/"
+find "$1" -mindepth 1 -delete'
+    if [ "$(id -u)" = 0 ]; then
+        sh -c "$move" sh "$machine/bind@var" "$machine/root" "$previous"
+    else
+        mkosi-sandbox \
+            --ro-bind / / \
+            --tmpfs /tmp \
+            --bind-foreign "$(realpath "$machine/bind@var")" /tmp/var \
+            --bind-foreign "$(realpath "$machine/root")" /tmp/root \
+            --ro-bind-foreign "$(realpath "$previous")" /tmp/previous \
+            --become-root \
+            -- sh -c "$move" sh /tmp/var /tmp/root /tmp/previous
+    fi
+    # Emptied, bind@var/ can go from its user-owned parent.
+    rmdir "$machine/bind@var"
+    echo "Moved $machine/bind@var to root/var, with the users of $(basename "$previous")"
+fi
 
 # Copy into a directory that systemd-vpick ignores, so that an interrupted copy
 # is never booted, and rename it once complete.

@@ -1,3 +1,4 @@
-# Targets for VictoriaMetrics to scrape, in Prometheus' format. Replace this
-# file through a confext (see the README).
+# Targets for VictoriaMetrics to scrape, in Prometheus' format. On a machine,
+# /etc/victoriametrics links to the image's copy; replace the link with a copy
+# of the directory to change it (see the README).
 scrape_configs: []

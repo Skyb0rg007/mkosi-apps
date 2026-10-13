@@ -55,7 +55,8 @@ peer authentication, so there is no database password. The cluster cannot ship
 in the image, since Debian's install-time `pg_createcluster` fails in mkosi's
 single-UID build (the `initdb failed` message during the build is harmless).
 `/etc/postgresql` links to `/var/lib/postgresql/etc`, so the clusters'
-configuration lives in `/var` with their data, and `/etc` can be read-only.
+configuration lives in `/var` with their data, also when `mkosi boot` runs the
+image with its own `/etc`.
 
 A major PostgreSQL upgrade needs one image with both server versions installed,
 so that `pg_upgradecluster` can migrate the old cluster.
@@ -133,37 +134,26 @@ without one it gets the default 19532 appended after the path:
 Both images are upstream's release binaries, pinned by checksum in the sync
 scripts; upstream does not sign them. They build with a newer Go than trixie's.
 
-### Configuring through a confext
+### Changing an app's configuration
 
-The image's `/etc` is read-only, so victoriametrics and victorialogs take
-their configuration from a configuration extension, which `systemd-confext`
-merges over `/etc` on boot; files under its `etc/` replace the image's. The
-images set none up. One way is a directory in the machine's `/var`, which
-survives upgrades; an extension needs a release file whose name matches its
-own:
+A machine's `/etc` is its own (see [Running the apps](#running-the-apps)), with
+the image's configuration linked in from `/usr/share/factory/etc`, so that it
+follows upgrades. To change some, replace the link with a copy, edit it, and
+reload or restart the service:
 
     machinectl [--user] shell victoriametrics
-    d=/var/lib/confexts/victoriametrics
-    mkdir -p $d/etc/extension-release.d $d/etc/victoriametrics
-    echo ID=_any > $d/etc/extension-release.d/extension-release.victoriametrics
-    # edit $d/etc/victoriametrics/scrape.yml, rules/*.yml, ...
-    systemd-confext refresh
+    rm /etc/victoriametrics
+    cp -a /usr/share/factory/etc/victoriametrics /etc/
+    # edit /etc/victoriametrics/scrape.yml, rules/*.yml, ...
     systemctl reload victoria-metrics  # or restart, or start vmalert, ...
 
-`systemd-confext` also looks in `/run/confexts/`, and takes `.raw` disk
-images as well as directories. Secrets can still come as system credentials
-named `victoriametrics.*` or `victorialogs.*`, which the services import, for
-flags and config fields that take a file path, e.g.
+A copy no longer follows upgrades, so compare it with the factory's after one.
+Files that the image does not ship but an app reads if present, such as
+`/etc/homebox.conf` or `/etc/victoriametrics/vmalert.env`, only need creating
+(in a copied directory, for the latter). Secrets can still come as system
+credentials, which the services import as `<app>.*`, for flags and config
+fields that take a file path, e.g.
 `/run/credentials/vmalert.service/victoriametrics.token`.
-
-The alternatives do not work rootless: a `BindReadOnly=` from the host fails
-under `PrivateUsers=managed` (nspawn cannot clone a host directory from
-within the managed user namespace), and a `robind@` entry in the `.mstack/`
-needs a foreign-owned directory and is mounted writable by systemd 261 anyway.
-`systemd-confext` in turn fails to merge over the bind mount that
-`ResolvConf=bind-uplink` puts on `/etc/resolv.conf`, so these two machines'
-settings have `ResolvConf=off`, and the container's systemd-resolved gets DNS
-servers over DHCP.
 
 ## Running the apps
 
@@ -180,13 +170,21 @@ to `/var/lib/machines/` for the system's:
     bin/install-app mkosi.output/soju_0.10.2-1
     systemctl --user restart systemd-nspawn@soju.service
 
-The image is read-only and versioned, and all state is in `/var`:
+Only `/usr` comes from the image, read-only and versioned. Everything else
+belongs to the machine, in `root/`: its `/etc` starts out empty and is
+populated on the first boot (see [/usr is enough to boot](#usr-is-enough-to-boot)),
+and its `/var` holds the app's data:
 
     ~/.local/state/machines/soju.mstack/
-    ├── layer@0.v/layer@0_0.10.1-1/   builds; the newest is booted
+    ├── layer@0.v/layer@0_0.10.1-1/   builds; the newest's /usr is booted
     ├── layer@0.v/layer@0_0.10.2-1/
     ├── layer@1/                      empty, see below
-    └── bind@var/                     the container's /var
+    └── root/                         the container's /etc, /var, ...
+
+A machine from before `root/` has its `/var` in `bind@var/`, which
+`bin/install-app` moves to `root/var/`, together with the users and groups of
+the version the machine ran: Debian's postinsts allocate some of them, such as
+PostgreSQL's, at IDs that `systemd-sysusers` would not give out again.
 
 A new machine also gets the profile's `<app>.nspawn` settings, with a machine
 ID of its own, in `~/.config/systemd/nspawn/` or `/etc/systemd/nspawn/`.
@@ -194,29 +192,29 @@ Settings there are trusted, unlike a file next to the image.
 
 To roll back, rename the newest version to a name `layer@0.v/` ignores, e.g.
 `.layer@0_0.10.2-1.old`, and restart. The apps migrate their own data on start,
-so a rollback past a schema change needs a backup of `bind@var/`. Versions are
+so a rollback past a schema change needs a backup of `root/`. Versions are
 owned by the foreign UID range; as root `rm -rf` deletes one, otherwise:
 
     mkosi-sandbox --ro-bind / / --tmpfs /tmp --bind-foreign "$dir" /tmp/dir \
         --become-root -- find /tmp/dir -mindepth 1 -delete && rmdir "$dir"
 
-- `layer@1/` keeps the image read-only. A single layer would be bind mounted
-  as the root, which systemd 261 leaves writable even though it lists it as
-  read-only, so the container could change the image. Two layers become an
-  overlayfs without a writable layer, which is read-only.
+- `layer@1/` keeps `/usr` read-only. A single layer would be bind mounted,
+  which systemd 261 leaves writable even though it lists it as read-only, so
+  the container could change the image. Two layers become an overlayfs
+  without a writable layer, which is read-only.
 - `PrivateUsers=managed`, which `.mstack/` requires, takes the container's
   UID range from `systemd-nsresourced`. `systemd-mountfsd` maps the
-  foreign-owned directories onto it, so `bind@var/` stays foreign-owned no
+  foreign-owned directories onto it, so `root/` stays foreign-owned no
   matter which range a boot gets. For a client without privileges, mountfsd
   only mounts a foreign-owned directory whose parent the client owns, so the
   machine directory and `layer@0.v/` stay the user's.
 - `bin/install-app` refuses an output that has been booted, which leaves state
   behind in it, such as a machine ID that would take precedence over
   `MachineID=`. `mkosi -f build` replaces it.
-- Users must keep their IDs across image versions. `StateDirectory=` re-owns
-  its directory when they change, but nothing re-owns PostgreSQL's data.
-- With the root read-only, the machine ID comes from `MachineID=`. Without
-  it, every boot gets a new one, and with it a new journal directory.
+- The machine keeps its users in its own `/etc/passwd`, so they keep their
+  IDs across image versions; `systemd-sysusers` adds new ones.
+- The first boot writes the machine ID that `MachineID=` sets to the
+  machine's `/etc/machine-id`.
 - The settings leave out the root autologin of `mkosi.nspawn`;
   `machinectl [--user] shell <app>` gives a root shell.
 - The settings forward no ports: the apps are reached as `<app>._dhcp`, the
@@ -333,8 +331,8 @@ Following [ParticleOS](https://github.com/systemd/particleos), the images'
   shell unsets the `SOURCE_DATE_EPOCH` that Nix exports, which would clamp
   every build to 1980.
 
-On an image's own, read-only `/etc` all of this is a no-op: it is already
-populated.
+`mkosi boot` runs the whole image, whose own `/etc` is already populated; there
+all of this is a no-op.
 
 ### Every file is owned by image root
 
