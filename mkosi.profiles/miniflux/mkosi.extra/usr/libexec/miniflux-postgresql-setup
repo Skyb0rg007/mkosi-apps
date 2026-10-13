@@ -13,6 +13,13 @@ if [ -z "$(pg_lsclusters --no-header)" ]; then
     # The newest PostgreSQL in the image.
     version="$(ls /usr/lib/postgresql | sort -V | tail -n 1)"
     pg_createcluster --start "$version" main
+else
+    # Usually running already. Not on the first boot of a machine whose /etc
+    # starts out empty, though: postgresql-generator ran before tmpfiles linked
+    # /etc/postgresql to the clusters in /var, so it started none.
+    pg_lsclusters --no-header | while read -r version cluster _; do
+        systemctl start "postgresql@$version-$cluster.service"
+    done
 fi
 
 psql() {
