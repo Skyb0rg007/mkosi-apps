@@ -1,0 +1,34 @@
+#!/bin/sh
+set -eu
+
+# Upstream version: mkosi.version without its "-<revision>" suffix. The
+# checksum belongs to that version, so update both together.
+version="$(jq -r .ImageVersion "$MKOSI_CONFIG")"
+version="${version%-*}"
+archive=wakapi_linux_amd64.zip
+base_url="https://github.com/muety/wakapi/releases/download/$version"
+# Upstream publishes neither checksums nor signatures, so pinning one here is
+# all the verification there is.
+sha256=a220b169d3b130d8ae0e1ea1e46c232e67e36a3496243c5c73d8eb69b31c102d
+
+# mkosi runs this script as /work/sync, so paths must come from $SRCDIR.
+profile="$SRCDIR/mkosi.profiles/wakapi"
+stamp="$profile/.downloaded-version"
+
+if [ "$(cat "$stamp" 2>/dev/null)" = "$version" ] && [ -e "$profile/mkosi.extra/usr/bin/wakapi" ]; then
+    echo "wakapi: $version already downloaded, skipping"
+    exit
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+curl --fail --location --output "$tmpdir/$archive" "$base_url/$archive"
+
+printf '%s  %s\n' "$sha256" "$tmpdir/$archive" | sha256sum --check --status
+
+# A zip, which the tools tree's bsdtar reads.
+bsdtar --extract --file="$tmpdir/$archive" --directory="$tmpdir" wakapi
+
+install -D --mode=0755 "$tmpdir/wakapi" "$profile/mkosi.extra/usr/bin/wakapi"
+echo "$version" > "$stamp"
