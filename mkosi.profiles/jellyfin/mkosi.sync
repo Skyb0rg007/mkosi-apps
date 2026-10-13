@@ -3,6 +3,10 @@
 # and Jellyfin's own ffmpeg build.
 set -eu
 
+# mkosi passes the invoking shell's umask on; a restrictive one must not
+# end up in the images' modes.
+umask 022
+
 # Upstream version: mkosi.version without its "-<revision>" suffix. The
 # checksums belong to that version, so update them together. jellyfin-ffmpeg
 # has versions of its own; bumping it is an image-only change.

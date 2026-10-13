@@ -6,6 +6,10 @@
 # and copied from there into the image.
 set -eu
 
+# mkosi passes the invoking shell's umask on; a restrictive one must not
+# end up in the images' modes.
+umask 022
+
 src="$SRCDIR/mkosi.profiles/paperless/src"
 lib=/usr/lib/paperless-ngx
 
@@ -13,6 +17,10 @@ mkdir "$lib"
 cp -R "$src/src" "$src/static" "$src/LICENSE" "$lib/"
 
 "$SRCDIR/mkosi.include/python/install-wheels" "$lib/venv" "$SRCDIR/mkosi.profiles/paperless/requirements.lock"
+
+# Readable by the service user, whatever the umask the release was unpacked
+# with in mkosi.sync.
+chmod -R u+rwX,go+rX,go-w "$lib"
 
 # /usr is read-only on the machines, so compile the bytecode now.
 "$lib/venv/bin/python3" -m compileall -q "$lib/src"

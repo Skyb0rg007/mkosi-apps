@@ -4,6 +4,10 @@
 # checkout's umask, and Meilisearch.
 set -eu
 
+# mkosi passes the invoking shell's umask on; a restrictive one must not
+# end up in the images' modes.
+umask 022
+
 dist="$SRCDIR/mkosi.profiles/karakeep/dist"
 lib="$DESTDIR/usr/lib/karakeep"
 

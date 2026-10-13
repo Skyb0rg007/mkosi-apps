@@ -5,6 +5,10 @@
 # here are nginx's www-data and Nextcloud's nextcloud, so open them up.
 set -eu
 
+# mkosi passes the invoking shell's umask on; a restrictive one must not
+# end up in the images' modes.
+umask 022
+
 src="$SRCDIR/mkosi.profiles/nextcloud/src"
 dest="$DESTDIR/usr/share/nextcloud"
 

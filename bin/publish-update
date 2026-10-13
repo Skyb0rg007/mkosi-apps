@@ -16,6 +16,10 @@
 # UKI. Older versions stay until removed by hand.
 set -eu
 
+# The web server has to read what this publishes, whatever the invoking
+# shell's umask.
+umask 022
+
 if [ $# -ne 3 ]; then
     echo "usage: $0 OUTPUT KEY DIR" >&2
     exit 2

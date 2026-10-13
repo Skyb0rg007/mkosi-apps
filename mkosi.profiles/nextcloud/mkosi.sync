@@ -4,6 +4,10 @@
 # which the build script installs.
 set -eu
 
+# mkosi passes the invoking shell's umask on; a restrictive one must not
+# end up in the images' modes.
+umask 022
+
 # Upstream version: mkosi.version without its "-<revision>" suffix. The
 # checksum belongs to that version, so update both together.
 version="$(jq -r .ImageVersion "$MKOSI_CONFIG")"

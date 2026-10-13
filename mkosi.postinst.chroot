@@ -6,6 +6,10 @@
 # pull in a newer systemd than the base has, which restores the line.
 set -e
 
+# mkosi passes the invoking shell's umask on; a restrictive one must not
+# end up in the images' modes.
+umask 022
+
 if [ -f /usr/lib/tmpfiles.d/debian.conf ]; then
     sed -i '/\/etc\/pam.d/d' /usr/lib/tmpfiles.d/debian.conf
 fi

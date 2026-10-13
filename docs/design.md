@@ -135,6 +135,14 @@ before the shift and by foreign UID 0 after it. Files that a package would
 install owned by a service user land as root instead; use `StateDirectory=` or
 tmpfiles `z`/`Z` where that matters.
 
+mkosi runs its scripts with the umask of the shell it was started from, and
+copies the directories a build script installs, `/usr` itself included, over
+the image's. So every script sets `umask 022` first, and those that copy trees
+a sync script unpacked set their modes explicitly; `mkosi.finalize` fixes up
+the `os-release` mkosi writes itself. A build from a shell with a restrictive
+umask such as `0007` otherwise leaves directories that the container's users,
+and `bin/install-app`, cannot read.
+
 ## Shared parts
 
 `mkosi.include/` holds what several apps need, each a config directory that a

@@ -3,6 +3,10 @@
 # a file:// proxy, and go re-verifies each one against go.sum as it extracts it.
 set -eu
 
+# mkosi passes the invoking shell's umask on; a restrictive one must not
+# end up in the images' modes.
+umask 022
+
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 

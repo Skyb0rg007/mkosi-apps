@@ -6,6 +6,10 @@
 # it, by digest, and unpacks them into dist/, which the build script installs.
 set -eu
 
+# mkosi passes the invoking shell's umask on; a restrictive one must not
+# end up in the images' modes.
+umask 022
+
 # Upstream version: mkosi.version without its "-<revision>" suffix. The image
 # and layer digests belong to that version, so update them together; Node.js
 # and Meilisearch have versions of their own, which upstream's Dockerfile and

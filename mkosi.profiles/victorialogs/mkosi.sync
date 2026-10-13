@@ -4,6 +4,10 @@
 # upstream's "-prod" suffix.
 set -eu
 
+# mkosi passes the invoking shell's umask on; a restrictive one must not
+# end up in the images' modes.
+umask 022
+
 # Upstream version: mkosi.version without its "-<revision>" suffix. The
 # checksums belong to that version, so update them together.
 version="$(jq -r .ImageVersion "$MKOSI_CONFIG")"

@@ -4,6 +4,10 @@
 # keep it in /var next to the database, as upstream's container image does.
 set -e
 
+# mkosi passes the invoking shell's umask on; a restrictive one must not
+# end up in the images' modes.
+umask 022
+
 sed -i 's|^JELLYFIN_CONFIG_DIR=.*|JELLYFIN_CONFIG_DIR="/var/lib/jellyfin/config"|' /etc/default/jellyfin
 grep -qx 'JELLYFIN_CONFIG_DIR="/var/lib/jellyfin/config"' /etc/default/jellyfin
 

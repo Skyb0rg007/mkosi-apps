@@ -6,5 +6,13 @@
 # the presets. The factory keeps files that packages already ship there.
 set -e
 
+# mkosi passes the invoking shell's umask on; a restrictive one must not
+# end up in the images' modes.
+umask 022
+
 mkdir -p "$BUILDROOT/usr/share/factory/"
 cp --archive --no-target-directory --update=none "$BUILDROOT/etc" "$BUILDROOT/usr/share/factory/etc"
+
+# mkosi writes IMAGE_ID and IMAGE_VERSION into os-release itself, with the
+# umask it was started with, so it may be readable by root alone.
+chmod 0644 "$BUILDROOT/usr/lib/os-release"

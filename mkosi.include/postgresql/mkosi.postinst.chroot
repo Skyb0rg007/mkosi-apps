@@ -5,6 +5,10 @@
 # because mkosi runs dpkg on the image from outside a chroot.
 set -e
 
+# mkosi passes the invoking shell's umask on; a restrictive one must not
+# end up in the images' modes.
+umask 022
+
 if [ ! -L /etc/postgresql ]; then
     # Fails if a package ever ships files here, rather than hiding them.
     rmdir /etc/postgresql

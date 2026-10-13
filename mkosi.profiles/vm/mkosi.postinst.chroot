@@ -6,6 +6,10 @@
 # $SYSUPDATE_URL, the image has its A/B layout but nothing to update from.
 set -e
 
+# mkosi passes the invoking shell's umask on; a restrictive one must not
+# end up in the images' modes.
+umask 022
+
 profile="$SRCDIR/mkosi.profiles/vm"
 
 if [ -z "${SYSUPDATE_URL:-}" ]; then

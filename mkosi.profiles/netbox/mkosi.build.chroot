@@ -6,6 +6,10 @@
 # and copied from there into the image.
 set -eu
 
+# mkosi passes the invoking shell's umask on; a restrictive one must not
+# end up in the images' modes.
+umask 022
+
 src="$SRCDIR/mkosi.profiles/netbox/src"
 lib=/usr/lib/netbox
 
@@ -32,6 +36,10 @@ API_TOKEN_PEPPERS = {1: "build-only-" + "x" * 50}
 EOF
 PYTHONPATH="$tmpdir" NETBOX_CONFIGURATION=build_configuration \
     "$lib/venv/bin/python3" "$lib/netbox/manage.py" collectstatic --no-input --verbosity=0
+
+# Readable by the service user, whatever the umask the release was unpacked
+# with in mkosi.sync.
+chmod -R u+rwX,go+rX,go-w "$lib"
 
 # /usr is read-only on the machines, so compile the bytecode now.
 "$lib/venv/bin/python3" -m compileall -q "$lib/netbox"

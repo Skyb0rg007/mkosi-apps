@@ -9,6 +9,10 @@
 # download it.
 set -eu
 
+# mkosi passes the invoking shell's umask on; a restrictive one must not
+# end up in the images' modes.
+umask 022
+
 venv="$1"
 lock="$2"
 
