@@ -1,0 +1,5 @@
+enable paperless-webserver.service
+enable paperless-task-queue.service
+enable paperless-scheduler.service
+enable paperless-consumer.service
+enable redis-server.service

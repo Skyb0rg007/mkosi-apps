@@ -1,0 +1,28 @@
+#!/bin/sh
+# Regenerate requirements.lock, the hashed lockfile that mkosi.sync downloads
+# wheels from, after a paperless-ngx upgrade. Run from the dev shell, which has
+# uv, after a build has run mkosi.sync to unpack the new release into src/.
+#
+# Upstream's requirements.txt pins and hashes everything, but for all
+# platforms at once, with markers that pip does not evaluate for the image's
+# Python when it downloads for it. This resolves it for the image's Python and
+# glibc. It leaves out mysqlclient, MariaDB's driver, and psycopg-c, both only
+# published as source for Python 3.13; psycopg uses libpq directly instead.
+set -eu
+
+cd "$(dirname "$0")"
+
+awk '
+    /^[^ #-]/ { skip = /^(mysqlclient|psycopg-c)[ =@]/ }
+    !skip
+' src/requirements.txt |
+    uv pip compile \
+        --python-version 3.13 \
+        --python-platform x86_64-manylinux_2_40 \
+        --index-strategy unsafe-best-match \
+        --emit-index-url \
+        --generate-hashes \
+        --no-header \
+        --quiet \
+        --output-file requirements.lock \
+        -

@@ -1,0 +1,25 @@
+[Unit]
+Description=Paperless webserver
+Documentation=https://docs.paperless-ngx.com/
+Requires=paperless-setup.service
+After=paperless-setup.service
+Wants=redis-server.service
+After=redis-server.service
+
+[Service]
+User=paperless
+Group=paperless
+EnvironmentFile=/usr/lib/paperless-ngx/paperless.env
+EnvironmentFile=/var/lib/paperless/secret.env
+WorkingDirectory=/usr/lib/paperless-ngx/src
+# On port 80, dual-stack.
+Environment=GRANIAN_HOST=::
+Environment=GRANIAN_PORT=80
+Environment=GRANIAN_WORKERS=1
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ExecStart=/usr/lib/paperless-ngx/venv/bin/granian --interface asginl --ws --loop uvloop paperless.asgi:application
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,21 @@
+#!/bin/sh
+# Prepare /var/lib/paperless for paperless-ngx, as the paperless user: generate
+# the secret key once, create the directories its checks require, and migrate
+# the database, as upstream's container image does on every start.
+set -eu
+
+cd /var/lib/paperless
+
+if [ ! -e secret.env ]; then
+    (
+        umask 077
+        printf 'PAPERLESS_SECRET_KEY=%s\n' "$(python3 -c 'import secrets; print(secrets.token_urlsafe(64))')" > secret.env.tmp
+    )
+    mv secret.env.tmp secret.env
+fi
+
+# The search index's directory too, which reindex --if-needed expects.
+mkdir -p data/index media consume
+
+paperless-manage migrate --no-input
+paperless-manage document_index reindex --if-needed

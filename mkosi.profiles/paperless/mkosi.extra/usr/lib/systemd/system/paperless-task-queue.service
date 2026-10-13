@@ -1,0 +1,20 @@
+[Unit]
+Description=Paperless Celery workers
+Documentation=https://docs.paperless-ngx.com/
+Requires=paperless-setup.service
+After=paperless-setup.service
+Wants=redis-server.service
+After=redis-server.service
+
+[Service]
+User=paperless
+Group=paperless
+EnvironmentFile=/usr/lib/paperless-ngx/paperless.env
+EnvironmentFile=/var/lib/paperless/secret.env
+WorkingDirectory=/usr/lib/paperless-ngx/src
+ExecStart=/usr/lib/paperless-ngx/venv/bin/celery --app paperless worker --loglevel INFO --without-mingle --without-gossip
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

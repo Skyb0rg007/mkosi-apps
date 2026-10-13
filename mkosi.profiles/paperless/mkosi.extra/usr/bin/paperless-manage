@@ -1,0 +1,18 @@
+#!/bin/sh
+# paperless-ngx's manage.py, as the paperless user, with the image's settings,
+# e.g.:
+#
+#     paperless-manage createsuperuser
+#     paperless-manage document_exporter /var/lib/paperless/export
+set -eu
+
+if [ "$(id -u)" = 0 ]; then
+    exec runuser -u paperless -- "$0" "$@"
+fi
+
+set -a
+. /usr/lib/paperless-ngx/paperless.env
+. /var/lib/paperless/secret.env
+set +a
+cd /usr/lib/paperless-ngx/src
+exec /usr/lib/paperless-ngx/venv/bin/python3 manage.py "$@"

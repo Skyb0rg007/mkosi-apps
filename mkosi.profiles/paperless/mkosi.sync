@@ -1,0 +1,46 @@
+#!/bin/sh
+# Fetch step: the only part of the paperless-ngx build that touches the
+# network.
+#
+# Downloads the release tarball, which comes with its frontend built and its
+# static files collected, verified against its pinned checksum, then the
+# wheels requirements.lock pins, verified against its hashes, into a cache
+# that the build script installs from offline (see mkosi.build.chroot).
+set -eu
+
+# Upstream version: mkosi.version without its "-<revision>" suffix. The
+# checksum belongs to that version, so update both together, and then
+# requirements.lock with update-requirements.
+version="$(jq -r .ImageVersion "$MKOSI_CONFIG")"
+version="${version%-*}"
+archive="paperless-ngx-v$version.tar.xz"
+url="https://github.com/paperless-ngx/paperless-ngx/releases/download/v$version/$archive"
+# Upstream publishes no checksums or signatures; this is the digest GitHub
+# lists for the release asset.
+sha256=438d0df9adbb4319cb5d5ac83c97834e93a1dd10cd8b4b7bd3b5dae9992a4fd1
+
+# mkosi runs this script as /work/sync, so paths must come from $SRCDIR.
+profile="$SRCDIR/mkosi.profiles/paperless"
+TARGET="$profile/src"
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+if [ "$(cat "$TARGET/.mkosi-version" 2>/dev/null)" = "$version" ]; then
+    echo "paperless: $TARGET is $version, skipping download"
+else
+    curl --fail --location --output "$tmpdir/$archive" "$url"
+    printf '%s  %s\n' "$sha256" "$tmpdir/$archive" | sha256sum --check --status
+
+    # Extract beside the target and move it into place, so an interrupted run
+    # never leaves a partial tree that the check above would mistake for done.
+    mkdir "$tmpdir/src"
+    tar --extract --xz --file="$tmpdir/$archive" --directory="$tmpdir/src" --strip-components=1
+    rm "$tmpdir/$archive"
+    echo "$version" > "$tmpdir/src/.mkosi-version"
+    rm -rf "$TARGET"
+    mv "$tmpdir/src" "$TARGET"
+fi
+
+# langdetect has only ever been published as source.
+"$SRCDIR/mkosi.include/python/download-wheels" "$profile/requirements.lock" langdetect

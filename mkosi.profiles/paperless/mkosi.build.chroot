@@ -1,0 +1,26 @@
+#!/bin/sh
+# Build step: offline. Installs paperless-ngx into /usr/lib/paperless-ngx with
+# a virtualenv from the wheels mkosi.sync downloaded. The release has its
+# frontend built, its translations compiled and its static files collected
+# already. All of it is made at its final path, which the virtualenv records,
+# and copied from there into the image.
+set -eu
+
+src="$SRCDIR/mkosi.profiles/paperless/src"
+lib=/usr/lib/paperless-ngx
+
+mkdir "$lib"
+cp -R "$src/src" "$src/static" "$src/LICENSE" "$lib/"
+
+"$SRCDIR/mkosi.include/python/install-wheels" "$lib/venv" "$SRCDIR/mkosi.profiles/paperless/requirements.lock"
+
+# /usr is read-only on the machines, so compile the bytecode now.
+"$lib/venv/bin/python3" -m compileall -q "$lib/src"
+
+mkdir -p "$DESTDIR/usr/lib"
+cp -a "$lib" "$DESTDIR/usr/lib/paperless-ngx"
+
+# Upstream's ImageMagick policy, as in its container image: Debian's forbids
+# reading PDFs, which paperless needs for thumbnails.
+install -D --mode=0644 "$src/docker/rootfs/etc/ImageMagick-6/paperless-policy.xml" \
+    "$DESTDIR/etc/ImageMagick-6/policy.xml"

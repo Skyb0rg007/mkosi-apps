@@ -1,0 +1,13 @@
+[Unit]
+Description=Set up paperless-ngx's secret key and database
+Documentation=file:/usr/libexec/paperless-setup
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=paperless
+StateDirectory=paperless
+StateDirectoryMode=0750
+ExecStart=/usr/libexec/paperless-setup
+# Migrations of a large database take a while.
+TimeoutStartSec=infinity
