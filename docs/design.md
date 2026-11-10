@@ -182,7 +182,7 @@ psycopg's binary or pure-Python implementation for its C one; pure-Python ones
 are built from source with Debian's setuptools.
 
 Apps released as built artifacts only are installed from those: release
-binaries (homebox, wakapi, VictoriaMetrics), upstream's Debian packages
+binaries (homebox, wakapi, VictoriaMetrics, Woodpecker), upstream's Debian packages
 (jellyfin, miniflux), and for karakeep the layers of upstream's container
 image that hold the app, by digest.
 

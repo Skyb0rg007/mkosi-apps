@@ -9,9 +9,9 @@
 # mkosi.sync pins, checks it against what upstream publishes beside it (a
 # signature, checksums, GitHub's asset digest, the repository's index), pins
 # the new checksums in mkosi.sync, and sets mkosi.version to <version>-1.
-# Components with versions of their own (jellyfin-ffmpeg, gamja) move to
-# their newest too, which only bumps the revision; karakeep's Node.js and
-# Meilisearch follow upstream's pins. netbox's and paperless's
+# Components with versions of their own (jellyfin-ffmpeg, gamja, plugin-git)
+# move to their newest too, which only bumps the revision; karakeep's Node.js
+# and Meilisearch follow upstream's pins. netbox's and paperless's
 # requirements.lock are regenerated. Nextcloud goes at most one major release
 # ahead, as far as its upgrade can.
 #
@@ -391,6 +391,30 @@ update_victoriametrics() {
 
 update_wakapi() {
     github_app muety/wakapi "" wakapi_linux_amd64.zip
+}
+
+update_woodpecker() {
+    latest="$(github_latest woodpecker-ci/woodpecker)"
+    if pick "$latest"; then
+        base="https://github.com/woodpecker-ci/woodpecker/releases/download/v$new"
+        fetch "$base/checksums.txt" > "$tmp/checksums.txt"
+        for archive in woodpecker-server_linux_amd64.tar.gz woodpecker-agent_linux_amd64.tar.gz; do
+            upstream="$(awk -v name="$archive" '$2 == name { print $1 }' "$tmp/checksums.txt")"
+            [ -n "$upstream" ] || die "$archive: not in upstream's checksums.txt"
+            sum="$(download "$base/$archive" "$tmp/$archive" "$upstream")"
+            set_pin mkosi.sync "$archive" "$sum"
+        done
+    fi
+
+    plugin_git="$(github_latest woodpecker-ci/plugin-git)"
+    [ -n "$plugin_git" ] || die "found no plugin-git release upstream"
+    if newer "$(get_var mkosi.sync plugin_git_version)" "$plugin_git"; then
+        log "updating plugin-git to $plugin_git"
+        digest="$(github_digest woodpecker-ci/plugin-git "$plugin_git" linux-amd64_plugin-git)"
+        sum="$(download "https://github.com/woodpecker-ci/plugin-git/releases/download/$plugin_git/linux-amd64_plugin-git" "$tmp/plugin-git" "$digest")"
+        set_var mkosi.sync plugin_git_version "$plugin_git"
+        set_var mkosi.sync plugin_git_sha256 "$sum"
+    fi
 }
 
 # Run in the app's profile directory: update it, and set its version, from

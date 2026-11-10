@@ -17,6 +17,7 @@ run as its own `systemd-nspawn` container, without root.
 | [victoriametrics](mkosi.profiles/victoriametrics/README.md) | VictoriaMetrics, with vmagent, vmalert and vmauth |
 | [victorialogs](mkosi.profiles/victorialogs/README.md) | VictoriaLogs |
 | [wakapi](mkosi.profiles/wakapi/README.md) | Wakapi coding statistics |
+| [woodpecker](mkosi.profiles/woodpecker/README.md) | Woodpecker CI server, with an agent for local pipelines |
 
 How it all fits together, and why, is in [docs/design.md](docs/design.md).
 

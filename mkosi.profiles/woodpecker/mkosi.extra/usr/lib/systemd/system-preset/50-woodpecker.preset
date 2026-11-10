@@ -1,0 +1,2 @@
+enable woodpecker-server.service
+enable woodpecker-agent.service

@@ -1,0 +1,55 @@
+#!/bin/sh
+# Download upstream's release binaries: Woodpecker's server and agent, and
+# plugin-git, which the agent's local backend runs to clone. They are
+# statically linked.
+set -eu
+
+# mkosi passes the invoking shell's umask on; a restrictive one must not
+# end up in the images' modes.
+umask 022
+
+# Upstream version: mkosi.version without its "-<revision>" suffix. The
+# checksums belong to that version, so update them together; plugin-git has
+# versions of its own, and bumping it is an image-only change.
+version="$(jq -r .ImageVersion "$MKOSI_CONFIG")"
+version="${version%-*}"
+base_url="https://github.com/woodpecker-ci/woodpecker/releases/download/v$version"
+# Upstream publishes checksums next to the archives but no signatures, so
+# pinning them here is all the verification there is.
+archives="
+woodpecker-server_linux_amd64.tar.gz 82dd50755bb198943521fa30e788ddd20de8179126d5abf9cb5de43e506e45a2
+woodpecker-agent_linux_amd64.tar.gz cb8cf9028cde5a8eaf8612e9aec59a3e8636c1b2ab8d339cfafb770ebba5e3d8
+"
+plugin_git_version=2.12.1
+plugin_git_sha256=356060a76a8eebecc65cdfd51e0e583a9aad17564030f64672dc4c5af8ed45c0
+
+# mkosi runs this script as /work/sync, so paths must come from $SRCDIR.
+profile="$SRCDIR/mkosi.profiles/woodpecker"
+stamp="$profile/.downloaded-version"
+bin="$profile/mkosi.extra/usr/bin"
+
+if [ "$(cat "$stamp" 2>/dev/null)" = "$version plugin-git-$plugin_git_version" ] && [ -e "$bin/woodpecker-server" ]; then
+    echo "woodpecker: $version already downloaded, skipping"
+    exit
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+mkdir "$tmpdir/bin"
+
+echo "$archives" | while read -r archive sha256; do
+    [ -n "$archive" ] || continue
+    curl --fail --location --output "$tmpdir/$archive" "$base_url/$archive"
+    printf '%s  %s\n' "$sha256" "$tmpdir/$archive" | sha256sum --check --status
+    tar --extract --gunzip --file="$tmpdir/$archive" --directory="$tmpdir/bin"
+done
+
+curl --fail --location --output "$tmpdir/bin/plugin-git" \
+    "https://github.com/woodpecker-ci/plugin-git/releases/download/$plugin_git_version/linux-amd64_plugin-git"
+printf '%s  %s\n' "$plugin_git_sha256" "$tmpdir/bin/plugin-git" | sha256sum --check --status
+
+rm -rf "$bin"
+for file in "$tmpdir"/bin/*; do
+    install -D --mode=0755 "$file" "$bin/$(basename "$file")"
+done
+echo "$version plugin-git-$plugin_git_version" > "$stamp"

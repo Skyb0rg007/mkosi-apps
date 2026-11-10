@@ -1,0 +1,24 @@
+[Unit]
+Description=Woodpecker CI server
+Documentation=https://woodpecker-ci.org/docs/
+# It needs a forge, which only /etc/woodpecker.conf can configure.
+ConditionPathExists=/etc/woodpecker.conf
+Requires=woodpecker-secret.service
+After=woodpecker-secret.service
+After=network.target
+
+[Service]
+User=woodpecker
+StateDirectory=woodpecker
+WorkingDirectory=/var/lib/woodpecker
+EnvironmentFile=/usr/lib/woodpecker/server.env
+EnvironmentFile=/var/lib/woodpecker-secret/secret.env
+EnvironmentFile=/var/lib/woodpecker-secret/server.env
+EnvironmentFile=/etc/woodpecker.conf
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ExecStart=/usr/bin/woodpecker-server
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

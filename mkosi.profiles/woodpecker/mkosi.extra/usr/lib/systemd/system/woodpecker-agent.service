@@ -1,0 +1,25 @@
+[Unit]
+Description=Woodpecker CI agent
+Documentation=https://woodpecker-ci.org/docs/administration/configuration/backends/local
+ConditionPathExists=/etc/woodpecker.conf
+Requires=woodpecker-secret.service
+After=woodpecker-secret.service
+Wants=woodpecker-server.service
+After=woodpecker-server.service
+
+[Service]
+# Its own user, so that pipelines cannot reach the server's database.
+User=woodpecker-agent
+StateDirectory=woodpecker-agent
+CacheDirectory=woodpecker-agent
+WorkingDirectory=/var/lib/woodpecker-agent
+EnvironmentFile=/usr/lib/woodpecker/agent.env
+EnvironmentFile=/var/lib/woodpecker-secret/secret.env
+EnvironmentFile=/etc/woodpecker.conf
+ExecStart=/usr/bin/woodpecker-agent
+# It gives up after a few attempts to reach the server, e.g. while it starts.
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
