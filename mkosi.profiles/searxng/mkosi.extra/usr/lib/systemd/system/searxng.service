@@ -1,0 +1,34 @@
+[Unit]
+Description=SearXNG metasearch engine
+Documentation=https://docs.searxng.org/
+Requires=searxng-secret.service
+After=searxng-secret.service
+# Engines and the tracker URL rules load from the network on start.
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=searxng
+EnvironmentFile=/var/lib/searxng-secret/secret.env
+Environment=SEARXNG_SETTINGS_PATH=/etc/searxng/settings.yml
+# Its caches are SQLite databases in the temporary directory.
+CacheDirectory=searxng
+Environment=TMPDIR=/var/cache/searxng
+# As in upstream's container image.
+Environment=GRANIAN_INTERFACE=wsgi
+Environment=GRANIAN_HOST=::
+Environment=GRANIAN_PORT=80
+Environment=GRANIAN_PROCESS_NAME=searxng
+Environment=GRANIAN_WEBSOCKETS=false
+Environment=GRANIAN_BLOCKING_THREADS=4
+Environment=GRANIAN_BLOCKING_THREADS_IDLE_TIMEOUT=5m
+Environment=GRANIAN_WORKERS_KILL_TIMEOUT=30s
+EnvironmentFile=-/etc/searxng/searxng.conf
+WorkingDirectory=/usr/lib/searxng
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ExecStart=/usr/lib/searxng/venv/bin/granian searx.webapp:app
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

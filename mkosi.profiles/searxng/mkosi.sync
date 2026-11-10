@@ -1,0 +1,59 @@
+#!/bin/sh
+# Fetch step: the only part of the SearXNG build that touches the network.
+#
+# Downloads the source at the pinned commit, verified against its pinned
+# checksum, then the wheels requirements.lock pins, verified against its
+# hashes, into a cache that the build script installs from offline (see
+# mkosi.build.chroot).
+set -eu
+
+# mkosi passes the invoking shell's umask on; a restrictive one must not
+# end up in the images' modes.
+umask 022
+
+# SearXNG has no releases: it is versioned by commit, here as
+# <year>.<month>.<day>.<hhmmss>.<short hash> of its commit time in UTC, which
+# is mkosi.version without its "-<revision>" suffix. Upstream's own
+# <date>+<short hash> would do, but systemd-vpick ignores versions with a "+",
+# and the time keeps two commits of a day in order. The commit and checksum
+# belong to that version, so update them together, and then
+# requirements.lock with update-requirements.
+version="$(jq -r .ImageVersion "$MKOSI_CONFIG")"
+version="${version%-*}"
+commit=57ff753ad416b7bf27e59d72ae8c7cac93b56be4
+url="https://github.com/searxng/searxng/archive/$commit.tar.gz"
+# GitHub generates the archive, without a checksum or signature, so pinning
+# one here is all the verification there is.
+sha256=711ee0c77457ff9af09058e512a43452fd7394b68aab307415674791cc9037b0
+
+case "$version" in
+*."$(echo "$commit" | cut -c1-7)") ;;
+*)
+    echo "searxng: version $version is not of commit $commit"
+    exit 1
+    ;;
+esac
+
+# mkosi runs this script as /work/sync, so paths must come from $SRCDIR.
+profile="$SRCDIR/mkosi.profiles/searxng"
+TARGET="$profile/src"
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+if [ "$(cat "$TARGET/.mkosi-version" 2>/dev/null)" = "$version" ]; then
+    echo "searxng: $TARGET is $version, skipping download"
+else
+    curl --fail --location --output "$tmpdir/source.tar.gz" "$url"
+    printf '%s  %s\n' "$sha256" "$tmpdir/source.tar.gz" | sha256sum --check --status
+
+    # Extract beside the target and move it into place, so an interrupted run
+    # never leaves a partial tree that the check above would mistake for done.
+    mkdir "$tmpdir/src"
+    tar --extract --gunzip --file="$tmpdir/source.tar.gz" --directory="$tmpdir/src" --strip-components=1
+    echo "$version" > "$tmpdir/src/.mkosi-version"
+    rm -rf "$TARGET"
+    mv "$tmpdir/src" "$TARGET"
+fi
+
+"$SRCDIR/mkosi.include/python/download-wheels" "$profile/requirements.lock"

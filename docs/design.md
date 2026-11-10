@@ -170,7 +170,7 @@ cache is go's module proxy layout, served to the build as `GOPROXY=file://…`
 with `-mod=readonly`. The tools tree's `golang-go` fetches (sync scripts run
 there); the image's own `golang-go` from `BuildPackages=` compiles.
 
-Python apps (netbox, paperless) install into a virtualenv from wheels.
+Python apps (netbox, paperless, searxng) install into a virtualenv from wheels.
 `mkosi.include/python/download-wheels` downloads those a hashed lockfile pins
 into `mkosi.cache/wheels/`, with the tools tree's pip, for the image's CPython
 and glibc, binary wheels only; `install-wheels` installs them offline,

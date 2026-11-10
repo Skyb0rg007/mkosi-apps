@@ -1,0 +1,42 @@
+#!/bin/sh
+# Build step: offline. Installs SearXNG into /usr/lib/searxng with a
+# virtualenv from the wheels mkosi.sync downloaded, at its final path, which
+# the virtualenv records, and copies it from there into the image. Its web
+# client is built upstream and committed, so there is nothing to build.
+set -eu
+
+# mkosi passes the invoking shell's umask on; a restrictive one must not
+# end up in the images' modes.
+umask 022
+
+src="$SRCDIR/mkosi.profiles/searxng/src"
+lib=/usr/lib/searxng
+# 2026.11.9.074933.57ff753 -> upstream's 2026.11.9+57ff753
+version="$(cut -d . -f 1-3 "$src/.mkosi-version")+$(cut -d . -f 5 "$src/.mkosi-version")"
+
+mkdir "$lib"
+cp -R "$src/searx" "$src/LICENSE" "$lib/"
+
+"$SRCDIR/mkosi.include/python/install-wheels" "$lib/venv" "$SRCDIR/mkosi.profiles/searxng/requirements.lock"
+
+# What SearXNG would ask git for, which a source archive has none of, as
+# upstream's container build freezes it.
+cat > "$lib/searx/version_frozen.py" <<EOF
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# pylint: disable=missing-module-docstring
+VERSION_STRING = "$version"
+VERSION_TAG = "$version"
+DOCKER_TAG = "$(echo "$version" | tr + -)"
+GIT_URL = "https://github.com/searxng/searxng"
+GIT_BRANCH = "master"
+EOF
+
+# Readable by the service user, whatever the umask the source was unpacked
+# with in mkosi.sync.
+chmod -R u+rwX,go+rX,go-w "$lib"
+
+# /usr is read-only on the machines, so compile the bytecode now.
+"$lib/venv/bin/python3" -m compileall -q "$lib/searx"
+
+mkdir -p "$DESTDIR/usr/lib"
+cp -a "$lib" "$DESTDIR/usr/lib/searxng"

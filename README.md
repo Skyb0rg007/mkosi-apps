@@ -13,6 +13,7 @@ run as its own `systemd-nspawn` container, without root.
 | [netbox](mkosi.profiles/netbox/README.md) | NetBox, with PostgreSQL and Redis |
 | [nextcloud](mkosi.profiles/nextcloud/README.md) | Nextcloud server, with PostgreSQL and Redis |
 | [paperless](mkosi.profiles/paperless/README.md) | Paperless-ngx document management, with Redis |
+| [searxng](mkosi.profiles/searxng/README.md) | SearXNG metasearch engine |
 | [soju](mkosi.profiles/soju/README.md) | soju IRC bouncer, with the gamja web client |
 | [victoriametrics](mkosi.profiles/victoriametrics/README.md) | VictoriaMetrics, with vmagent, vmalert and vmauth |
 | [victorialogs](mkosi.profiles/victorialogs/README.md) | VictoriaLogs |

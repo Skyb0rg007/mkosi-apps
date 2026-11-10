@@ -4,6 +4,7 @@
 #     bin/update-apps                   # every app
 #     bin/update-apps soju netbox       # these
 #     bin/update-apps nextcloud=35.0.2  # this version, newer or not
+#     bin/update-apps searxng=57ff753   # SearXNG, with no releases: a commit
 #
 # For each app, this finds upstream's newest release, downloads what the app's
 # mkosi.sync pins, checks it against what upstream publishes beside it (a
@@ -342,6 +343,29 @@ update_paperless() {
     sum="$(download "https://github.com/paperless-ngx/paperless-ngx/releases/download/v$new/$archive" "$tmp/$archive" "$digest")"
     set_var mkosi.sync sha256 "$sum"
     unpack "$tmp/$archive" --xz
+    ./update-requirements
+}
+
+update_searxng() {
+    # No releases: the newest commit, or the one given as searxng=COMMIT, as
+    # <year>.<month>.<day>.<hhmmss>.<short hash> of its commit time in UTC
+    # (see mkosi.sync).
+    github "repos/searxng/searxng/commits/${override:-master}" > "$tmp/commit"
+    commit="$(jq -r .sha "$tmp/commit")"
+    latest="$(jq -r .commit.committer.date "$tmp/commit" | sed 's/[-T:Z]/ /g' |
+        awk -v hash="$(echo "$commit" | cut -c1-7)" '{ printf "%d.%d.%d.%02d%02d%02d.%s", $1, $2, $3, $4, $5, $6, hash }')"
+    [ -n "$commit" ] && [ "$commit" != null ] || die "found no commit upstream"
+    if [ -z "$override" ] && ! newer "$cur_ver" "$latest"; then
+        return 0
+    fi
+    new="$latest"
+    log "updating to $new"
+    archive="$commit.tar.gz"
+    # GitHub generates the archive, without a checksum or signature.
+    sum="$(download "https://github.com/searxng/searxng/archive/$archive" "$tmp/$archive")"
+    set_var mkosi.sync commit "$commit"
+    set_var mkosi.sync sha256 "$sum"
+    unpack "$tmp/$archive" --gunzip
     ./update-requirements
 }
 

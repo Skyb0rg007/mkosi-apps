@@ -1,0 +1,30 @@
+#!/bin/sh
+# Regenerate requirements.lock, the hashed lockfile that mkosi.sync downloads
+# wheels from, after a SearXNG upgrade. Run from the dev shell, which has uv,
+# after mkosi.sync has unpacked the new commit into src/ (bin/update-apps does
+# both).
+#
+# SearXNG pins only its direct dependencies, in requirements.txt and, for
+# granian, which serves it, requirements-server.txt; this resolves the rest
+# for the image's Python and glibc, wheels only, and hashes them all. It
+# resolves them as of the commit's date, from the version of src/, which
+# keeps out releases SearXNG has not met, and makes the result repeatable.
+set -eu
+
+cd "$(dirname "$0")"
+
+version="$(cat src/.mkosi-version)"
+# 2026.11.9.074933.57ff753 -> 2026-11-09
+date="$(echo "$version" | awk -F . '{ printf "%04d-%02d-%02d", $1, $2, $3 }')"
+
+cat src/requirements.txt src/requirements-server.txt |
+    uv pip compile \
+        --python-version 3.13 \
+        --python-platform x86_64-manylinux_2_40 \
+        --only-binary :all: \
+        --exclude-newer "${date}T23:59:59Z" \
+        --generate-hashes \
+        --no-header \
+        --quiet \
+        --output-file requirements.lock \
+        -

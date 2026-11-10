@@ -1,0 +1,21 @@
+# SearXNG's settings in this image: upstream's defaults, from
+# /usr/lib/searxng/searx/settings.yml, with what this file changes. A confext
+# replaces it (see the README); keep use_default_settings, or the file has to
+# be complete.
+use_default_settings: true
+
+general:
+  instance_name: SearXNG
+
+server:
+  # granian serves SearXNG on port 80, and searxng-secret.service generates
+  # the secret key into SEARXNG_SECRET, which overrides secret_key.
+  base_url: false
+  # The limiter, against bots, needs Valkey; a private instance does without.
+  limiter: false
+  image_proxy: true
+
+search:
+  formats:
+    - html
+    - json
