@@ -84,9 +84,6 @@ Following [ParticleOS](https://github.com/systemd/particleos), the images'
   shell unsets the `SOURCE_DATE_EPOCH` that Nix exports, which would clamp
   every build to 1980.
 
-`mkosi boot` runs the whole image, whose own `/etc` is already populated; there
-all of this is a no-op.
-
 ## Writable confexts
 
 Merging a confext makes `/etc` read-only by default. minimal-base's drop-in for
@@ -113,17 +110,23 @@ incremental cache otherwise keeps the packages it has.
 
 ## Rootless containers
 
-An app is built as a directory (`Format=directory`) owned by the systemd
-foreign UID range, which is what unprivileged `systemd-nspawn` requires. Build,
-`mkosi boot`, `bin/install-app` and the user's `systemd-nspawn@.service` need
-no privileges.
+An app is built as a directory (`Format=directory`), and installed as a
+machine owned by the systemd foreign UID range, which is what unprivileged
+`systemd-nspawn` requires. Build, `bin/install-app` and the user's
+`systemd-nspawn@.service` need no privileges.
 
-`ForeignUIDRange=yes` makes mkosi shift the finished tree itself with
-`systemd-dissect --shift`, inside a user namespace `systemd-nsresourced` maps
-the foreign range into. No polkit check is involved, and the next
-`mkosi -f build` removes the foreign-owned tree on its own. The shift needs
-systemd 258 or newer in the tools tree, which is why that tree tracks Debian
-testing.
+mkosi builds in a plain unprivileged user namespace that maps only the
+invoking user, as root: the dev shell sets `MKOSI_FORCE_USERNS_FALLBACK=1`,
+which takes a mkosi newer than 27.1. With `systemd-nsresourced`'s user
+namespace instead, which `ForeignUIDRange=yes` requires, systemd 262 refuses
+the build overlay that `BuildPackages=` and build scripts need: nsresourced's
+BPF-LSM refuses any writable overlayfs whose upper layer outlives the
+namespace (systemd/mkosi#4438). So the output is owned by the user, and
+`bin/install-app` shifts it to the foreign range as it copies it into the
+machine, with `systemd-dissect --shift`, in a user namespace nsresourced maps
+the foreign range into. No polkit check is involved. mkosi's `boot` and
+`shell` verbs refuse a directory image the user owns, so an app is tried by
+installing it.
 
 `systemd-nspawn --image=` on a `Format=disk` output has to go through
 `systemd-mountfsd`, which fails unprivileged with
@@ -131,7 +134,7 @@ testing.
 foreign-owned directory avoids that.
 
 mkosi builds in single-UID mode, so every inode is owned by the invoking user
-before the shift and by foreign UID 0 after it. Files that a package would
+in the output and by foreign UID 0 once installed. Files that a package would
 install owned by a service user land as root instead; use `StateDirectory=` or
 tmpfiles `z`/`Z` where that matters.
 

@@ -3,12 +3,17 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
+    skyenet = {
+      url = "github:Skyb0rg007/packages?dir=NixOS";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
     {
       self,
       nixpkgs,
+      skyenet,
     }:
     let
       inherit (nixpkgs) lib;
@@ -30,7 +35,7 @@
           # host, see the README.
           default = pkgs.mkShellNoCC {
             packages = [
-              pkgs.mkosi
+              skyenet.legacyPackages.${system}.mkosi-HEAD
               pkgs.apt
               pkgs.gnupg
               pkgs.sequoia-sqv
@@ -51,6 +56,13 @@
             shellHook = ''
               unset SOURCE_DATE_EPOCH
             '';
+            # Since systemd 262, systemd-nsresourced refuses a writable overlayfs
+            # whose upper layer outlives the user namespace, which is every
+            # build overlay mkosi mounts for BuildPackages= and build scripts
+            # (systemd/mkosi#4438). So mkosi builds in a plain unprivileged
+            # user namespace instead; bin/install-app shifts the output to the
+            # foreign UID range. Needs a mkosi newer than 27.1.
+            MKOSI_FORCE_USERNS_FALLBACK = "1";
           };
         }
       );

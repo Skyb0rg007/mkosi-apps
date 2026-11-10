@@ -28,11 +28,13 @@ Python virtualenv include them from `mkosi.include/`. Run mkosi from the dev
 shell (`nix develop`):
 
     mkosi --profile=soju build          # mkosi.output/soju_0.10.1-1/
-    mkosi --profile=soju boot           # try it, on a throwaway copy
     mkosi --profile=soju,vm build       # a VM disk, in mkosi.output/vm/
 
-`mkosi boot` names the machine after the app, like an installed one, which has
-to be stopped first.
+The dev shell makes mkosi build without `systemd-nsresourced`, whose systemd
+262 refuses build overlays, so a build is owned by the user, not the foreign
+UID range; `bin/install-app` shifts it (see
+[docs/design.md](docs/design.md#rootless-containers)). For the same reason
+`mkosi boot` refuses it: try an app by installing it, see [Running](#running).
 
 An app's version is in `mkosi.profiles/<app>/mkosi.version` as
 `<upstream>-<revision>`. For a new upstream release, set its version with

@@ -15,13 +15,6 @@ Through system credentials (see
 | `miniflux.database-url` | Use this PostgreSQL; without it a local one runs |
 | `miniflux.conf` | Further settings in Miniflux's config file format, e.g. `BASE_URL=…` |
 
-For a try with `mkosi boot`:
-
-    mkosi --profile=miniflux \
-        --credential=miniflux.admin-username=admin \
-        --credential=miniflux.admin-password=… \
-        boot
-
 ## PostgreSQL
 
 Without `miniflux.database-url`, Miniflux uses a local PostgreSQL (see

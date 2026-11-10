@@ -13,11 +13,12 @@
 # holds everything else: /etc, starting out empty, and /var. A machine from
 # before root/ has its /var in bind@var/, which moves into root/var/.
 #
-# What nspawn mounts is owned by the foreign UID range, like the build: the
-# versions, layer@1/ and root/. Without root, systemd-mountfsd creates those
-# directories and mkosi-sandbox copies into them. Their parents stay owned by
-# the user, since mountfsd only mounts a foreign-owned directory for an
-# unprivileged client if the client owns its parent.
+# What nspawn mounts is owned by the foreign UID range: the versions, layer@1/
+# and root/. Without root, systemd-mountfsd creates those directories and
+# mkosi-sandbox copies into them. Their parents stay owned by the user, since
+# mountfsd only mounts a foreign-owned directory for an unprivileged client if
+# the client owns its parent. The build itself is owned by whoever built it,
+# every file in it alike, so the copy shifts it to the foreign range.
 set -eu
 
 foreign=2147352576
@@ -32,8 +33,8 @@ if [ "$app" = "$name" ] || [ ! -d "$output" ]; then
     echo "$usage" >&2
     exit 1
 fi
-if [ "$(stat -c %u "$output")" != "$foreign" ]; then
-    echo "$output is not owned by the foreign UID range" >&2
+if [ "$(stat -c %u "$output")" = "$foreign" ]; then
+    echo "$output is owned by the foreign UID range, from an older build; rebuild it" >&2
     exit 1
 fi
 # Booting the output itself leaves state in it, such as a machine ID that
@@ -109,20 +110,29 @@ fi
 # is never booted, and rename it once complete.
 tmp=".$layer.tmp"
 [ -d "$machine/layer@0.v/$tmp" ] || mkdir_foreign "$machine/layer@0.v" "$tmp"
+# Copy as root, then shift root to the foreign range's root. systemd-dissect
+# takes the shift from the owner of the directory itself, and keeps setuid
+# bits, which a plain chown clears.
 # shellcheck disable=SC2016 # expanded by the sh -c below
 copy='set -e
 find "$2" -mindepth 1 -delete
-cp -a "$1/." "$2/"'
+cp -a --no-preserve=ownership "$1/." "$2/"
+chown 0:0 "$2"
+systemd-dissect --shift "$2" foreign'
 
 if [ "$(id -u)" = 0 ]; then
     sh -c "$copy" sh "$output" "$machine/layer@0.v/$tmp"
 else
+    # The user is root here, owning the build, and the foreign range is mapped
+    # as itself, so the copy needs no foreign bind (in which a build owned by
+    # the user shows as nobody, its unreadable files out of reach).
     mkosi-sandbox \
         --ro-bind / / \
         --tmpfs /tmp \
-        --ro-bind-foreign "$(realpath "$output")" /tmp/output \
-        --bind-foreign "$(realpath "$machine/layer@0.v/$tmp")" /tmp/layer \
+        --ro-bind "$(realpath "$output")" /tmp/output \
+        --bind "$(realpath "$machine/layer@0.v/$tmp")" /tmp/layer \
         --become-root \
+        --map-foreign \
         -- sh -c "$copy" sh /tmp/output /tmp/layer
 fi
 mv "$machine/layer@0.v/$tmp" "$machine/layer@0.v/$layer"
