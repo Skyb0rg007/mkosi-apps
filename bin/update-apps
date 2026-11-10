@@ -12,7 +12,8 @@
 # the new checksums in mkosi.sync, and sets mkosi.version to <version>-1.
 # Components with versions of their own (jellyfin-ffmpeg, gamja, plugin-git)
 # move to their newest too, which only bumps the revision; karakeep's Node.js
-# and Meilisearch follow upstream's pins. netbox's and paperless's
+# and Meilisearch, and immich's Node.js, ffmpeg and VectorChord, follow
+# upstream's pins. netbox's and paperless's
 # requirements.lock are regenerated. Nextcloud goes at most one major release
 # ahead, as far as its upgrade can.
 #
@@ -229,6 +230,21 @@ pin_layers() {
     cat "$tmp/edit" > mkosi.sync
 }
 
+# image_node: the Node.js of image_layers's image, NODE_VERSION, pinned as
+# node_version and node_sha256
+image_node() {
+    node="$(jq -r '.config.Env[] | select(startswith("NODE_VERSION=")) | ltrimstr("NODE_VERSION=")' "$tmp/config")"
+    [ -n "$node" ] || die "found no NODE_VERSION in the image"
+    if [ "$node" != "$(get_var mkosi.sync node_version)" ] || [ -n "$override" ]; then
+        tarball="node-v$node-linux-x64.tar.xz"
+        upstream="$(fetch "https://nodejs.org/dist/v$node/SHASUMS256.txt" | awk -v name="$tarball" '$2 == name { print $1 }')"
+        [ -n "$upstream" ] || die "$tarball: not in Node.js's SHASUMS256.txt"
+        node_sum="$(download "https://nodejs.org/dist/v$node/$tarball" "$tmp/$tarball" "$upstream")"
+        set_var mkosi.sync node_version "$node"
+        set_var mkosi.sync node_sha256 "$node_sum"
+    fi
+}
+
 update_cdash() {
     latest="$(github_latest Kitware/CDash)"
     pick "$latest" || return 0
@@ -243,6 +259,51 @@ update_cdash() {
 
 update_homebox() {
     github_app sysadminsmedia/homebox v homebox_Linux_x86_64.tar.gz
+}
+
+update_immich() {
+    latest="$(github_latest immich-app/immich)"
+    pick "$latest" || return 0
+    image_layers https://ghcr.io/v2/immich-app/immich-server \
+        "https://ghcr.io/token?scope=repository:immich-app/immich-server:pull" "v$new" \
+        'COPY /usr/local/lib/ /usr/local/lib/ ' \
+        'COPY /build/ /build/ ' \
+        'COPY policy\.xml /etc/ImageMagick/policy\.xml ' \
+        'COPY /output/server-pruned \./server ' \
+        'COPY /usr/src/app/web/build /build/www ' \
+        'COPY /output/cli-pruned \./cli ' \
+        'COPY /usr/src/app/packages/plugin-core/dist ' \
+        'COPY /usr/src/app/packages/plugin-core/manifest\.json '
+    pin_layers
+    set_var mkosi.sync config "$(jq -r .config.digest "$tmp/manifest" | sed 's/^sha256://')"
+    image_node
+
+    # The jellyfin-ffmpeg upstream's base image installs, as its build lock in
+    # the /build layer has it, with its checksum.
+    blob "sha256:$(sed -n 2p "$tmp/layers")" "$tmp/build.tar.gz"
+    tar --extract --gunzip --file="$tmp/build.tar.gz" --directory="$tmp" build/build-lock.json
+    ffmpeg="$(jq -r '.packages[] | select(.name == "ffmpeg") | .version' "$tmp/build/build-lock.json")"
+    [ -n "$ffmpeg" ] || die "found no ffmpeg in the image's build lock"
+    if [ "$ffmpeg" != "$(get_var mkosi.sync ffmpeg_version)" ] || [ -n "$override" ]; then
+        upstream="$(jq -r '.packages[] | select(.name == "ffmpeg") | .sha256.amd64' "$tmp/build/build-lock.json")"
+        deb="jellyfin-ffmpeg7_$ffmpeg-trixie_amd64.deb"
+        sum="$(download "https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v$ffmpeg/$deb" "$tmp/$deb" "$upstream")"
+        set_var mkosi.sync ffmpeg_version "$ffmpeg"
+        set_var mkosi.sync ffmpeg_sha256 "$sum"
+    fi
+
+    # The VectorChord upstream's compose file pins, in its PostgreSQL image's
+    # tag.
+    vectorchord="$(fetch "https://raw.githubusercontent.com/immich-app/immich/v$new/docker/docker-compose.yml" |
+        sed -n 's|.*image: *ghcr.io/immich-app/postgres:[0-9]*-vectorchord\([0-9.]*\)-.*|\1|p')"
+    [ -n "$vectorchord" ] || die "found no VectorChord in upstream's docker-compose.yml"
+    if [ "$vectorchord" != "$(get_var mkosi.sync vectorchord_version)" ] || [ -n "$override" ]; then
+        deb="postgresql-17-vchord_$vectorchord-1_amd64.deb"
+        digest="$(github_digest tensorchord/VectorChord "$vectorchord" "$deb")"
+        sum="$(download "https://github.com/tensorchord/VectorChord/releases/download/$vectorchord/$deb" "$tmp/$deb" "$digest")"
+        set_var mkosi.sync vectorchord_version "$vectorchord"
+        set_var mkosi.sync vectorchord_sha256 "$sum"
+    fi
 }
 
 update_jellyfin() {
@@ -306,17 +367,7 @@ update_karakeep() {
         'COPY .*/workers /app/apps/workers ' \
         'COPY .*/monolith /usr/local/bin/monolith '
 
-    # The Node.js upstream's image has.
-    node="$(jq -r '.config.Env[] | select(startswith("NODE_VERSION=")) | ltrimstr("NODE_VERSION=")' "$tmp/config")"
-    [ -n "$node" ] || die "found no NODE_VERSION in the image"
-    if [ "$node" != "$(get_var mkosi.sync node_version)" ] || [ -n "$override" ]; then
-        tarball="node-v$node-linux-x64.tar.xz"
-        upstream="$(fetch "https://nodejs.org/dist/v$node/SHASUMS256.txt" | awk -v name="$tarball" '$2 == name { print $1 }')"
-        [ -n "$upstream" ] || die "$tarball: not in Node.js's SHASUMS256.txt"
-        node_sum="$(download "https://nodejs.org/dist/v$node/$tarball" "$tmp/$tarball" "$upstream")"
-        set_var mkosi.sync node_version "$node"
-        set_var mkosi.sync node_sha256 "$node_sum"
-    fi
+    image_node
 
     # The Meilisearch upstream's compose file pins.
     meilisearch="$(fetch "https://raw.githubusercontent.com/karakeep-app/karakeep/v$new/docker/docker-compose.yml" |

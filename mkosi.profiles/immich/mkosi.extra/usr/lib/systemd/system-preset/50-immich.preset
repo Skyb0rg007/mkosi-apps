@@ -1,0 +1,3 @@
+enable immich-database.service
+enable immich-server.service
+enable redis-server.service

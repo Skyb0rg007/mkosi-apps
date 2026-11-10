@@ -1,0 +1,29 @@
+[Unit]
+Description=Set up Immich's database extensions
+Documentation=https://docs.immich.app/administration/postgres-standalone/
+Requires=postgresql-setup@immich.service
+After=postgresql-setup@immich.service
+Before=immich-server.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=postgres
+# Immich creates the extensions it needs itself, but some only as a
+# superuser, so create them, and update VectorChord and pgvector to the
+# image's after an upgrade, before it starts. It vacuums the whole database
+# too, the shared catalogs included, which takes pg_maintain.
+ExecStart=psql --dbname=immich --quiet --set=ON_ERROR_STOP=1 \
+        --command="SET client_min_messages = warning" \
+        --command="CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"" \
+        --command="CREATE EXTENSION IF NOT EXISTS unaccent" \
+        --command="CREATE EXTENSION IF NOT EXISTS cube" \
+        --command="CREATE EXTENSION IF NOT EXISTS earthdistance" \
+        --command="CREATE EXTENSION IF NOT EXISTS pg_trgm" \
+        --command="CREATE EXTENSION IF NOT EXISTS vchord CASCADE" \
+        --command="ALTER EXTENSION vector UPDATE" \
+        --command="ALTER EXTENSION vchord UPDATE" \
+        --command="GRANT pg_maintain TO immich"
+
+[Install]
+RequiredBy=immich-server.service

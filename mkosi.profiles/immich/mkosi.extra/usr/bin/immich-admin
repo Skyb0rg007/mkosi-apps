@@ -1,0 +1,24 @@
+#!/bin/sh
+# shellcheck disable=SC1091 # files of the machine, not of the checkout
+# Immich's immich-admin, as the immich user, with Immich's settings, e.g.:
+#
+#     immich-admin reset-admin-password
+#     immich-admin list-users
+set -eu
+
+if [ "$(id -u)" != 0 ]; then
+    echo "immich-admin: run as root" >&2
+    exit 1
+fi
+
+set -a
+. /usr/lib/immich/version.env
+. /usr/lib/immich/immich.env
+if [ -e /etc/immich.conf ]; then
+    . /etc/immich.conf
+fi
+set +a
+export PATH=/usr/lib/immich/node/bin:/usr/lib/immich/server/bin:/usr/lib/jellyfin-ffmpeg:/usr/bin
+
+cd /usr/lib/immich
+exec /usr/sbin/runuser -u immich -- /usr/lib/immich/server/bin/start.sh immich-admin "$@"

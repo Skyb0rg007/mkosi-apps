@@ -1,0 +1,30 @@
+#!/bin/sh
+# Install what mkosi.sync downloaded: Immich's server, web client, CLI,
+# plugins and geodata, and Node.js, into /usr/lib/immich, with modes that its
+# users can read whatever the checkout's umask, and the libraries from
+# upstream's image into /usr/local/lib, where upstream built them for, with
+# their modules, and which sharp and libvips look in.
+set -eu
+
+# mkosi passes the invoking shell's umask on; a restrictive one must not
+# end up in the images' modes.
+umask 022
+
+dist="$SRCDIR/mkosi.profiles/immich/dist"
+lib="$DESTDIR/usr/lib/immich"
+
+mkdir -p "$lib/node/bin" "$lib/ImageMagick" "$DESTDIR/usr/local"
+cp -R "$dist/server" "$dist/cli" "$dist/build" "$lib/"
+install --mode=0755 "$dist/node/bin/node" "$lib/node/bin/"
+install -D --mode=0644 "$dist/node/LICENSE" "$DESTDIR/usr/share/doc/immich/node/LICENSE"
+install --mode=0644 "$dist/policy.xml" "$lib/ImageMagick/policy.xml"
+install --mode=0644 "$dist/version.env" "$lib/version.env"
+# As upstream's image links it.
+ln -s ../../cli/bin/immich "$lib/server/bin/immich"
+chmod -R u+rwX,go+rX,go-w "$lib"
+
+# Without what only building against them needs.
+cp -R "$dist/lib" "$DESTDIR/usr/local/lib"
+rm -r "$DESTDIR/usr/local/lib/pkgconfig" "$DESTDIR/usr/local/lib/python3.13"
+find "$DESTDIR/usr/local/lib" \( -name '*.a' -o -name '*.la' \) -delete
+chmod -R u+rwX,go+rX,go-w "$DESTDIR/usr/local/lib"

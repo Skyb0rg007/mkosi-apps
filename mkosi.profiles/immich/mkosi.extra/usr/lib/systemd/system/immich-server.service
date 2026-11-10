@@ -1,0 +1,25 @@
+[Unit]
+Description=Immich server
+Documentation=https://docs.immich.app/
+Requires=immich-database.service
+Wants=redis-server.service
+After=immich-database.service redis-server.service network.target
+
+[Service]
+User=immich
+StateDirectory=immich
+CacheDirectory=immich
+WorkingDirectory=/usr/lib/immich
+EnvironmentFile=/usr/lib/immich/version.env
+EnvironmentFile=/usr/lib/immich/immich.env
+EnvironmentFile=-/etc/immich.conf
+# Node.js, and upstream's scripts, and ffmpeg, which the server runs by name.
+Environment=PATH=/usr/lib/immich/node/bin:/usr/lib/immich/server/bin:/usr/lib/jellyfin-ffmpeg:/usr/bin
+Environment=TMPDIR=/var/cache/immich
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ExecStart=/usr/lib/immich/server/bin/start.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
