@@ -39,7 +39,12 @@ UID range; `bin/install-app` shifts it (see
 An app's version is in `mkosi.profiles/<app>/mkosi.version` as
 `<upstream>-<revision>`. For a new upstream release, set its version with
 revision `1` and update the checksum in the app's `mkosi.sync`; for any other
-change to the image, bump the revision.
+change to the image, bump the revision. `bin/update-apps` does that for every
+app, or those named, from upstream's newest releases, checked against the
+signatures or checksums upstream publishes:
+
+    bin/update-apps                        # every app
+    bin/update-apps soju nextcloud=35.0.2  # soju, and that Nextcloud
 
 ## Running
 

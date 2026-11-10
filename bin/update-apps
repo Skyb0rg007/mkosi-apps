@@ -1,0 +1,476 @@
+#!/bin/sh
+# Update apps to upstream's newest releases:
+#
+#     bin/update-apps                   # every app
+#     bin/update-apps soju netbox       # these
+#     bin/update-apps nextcloud=35.0.2  # this version, newer or not
+#
+# For each app, this finds upstream's newest release, downloads what the app's
+# mkosi.sync pins, checks it against what upstream publishes beside it (a
+# signature, checksums, GitHub's asset digest, the repository's index), pins
+# the new checksums in mkosi.sync, and sets mkosi.version to <version>-1.
+# Components with versions of their own (jellyfin-ffmpeg, gamja) move to
+# their newest too, which only bumps the revision; karakeep's Node.js and
+# Meilisearch follow upstream's pins. netbox's and paperless's
+# requirements.lock are regenerated. Nextcloud goes at most one major release
+# ahead, as far as its upgrade can.
+#
+# Run it from the dev shell, which has curl, jq, sqv, sqop and uv. It builds
+# nothing: build and try the updated apps, then commit. GITHUB_TOKEN, or gh's
+# login, raises GitHub's API rate limit.
+set -eu
+
+cd "$(dirname "$0")/.."
+
+github_token="${GITHUB_TOKEN:-$(gh auth token 2>/dev/null || true)}"
+
+log() {
+    printf '%s: %s\n' "$app" "$*" >&2
+}
+
+die() {
+    log "$*"
+    exit 1
+}
+
+# fetch URL [CURL-OPTION...]
+fetch() {
+    fetch_url="$1"
+    shift
+    curl --fail --silent --show-error --location "$@" "$fetch_url"
+}
+
+# download URL FILE [UPSTREAM-SHA256 [CURL-OPTION...]]: prints the file's
+# SHA-256, which has to be upstream's if given. It runs in command
+# substitutions, which do not always keep set -e, so it checks for itself.
+download() {
+    download_url="$1"
+    download_file="$2"
+    download_upstream="${3:-}"
+    shift "$(($# < 3 ? $# : 3))"
+    fetch "$download_url" --output "$download_file" "$@" || die "$download_url: download failed"
+    download_sum="$(sha256sum "$download_file" | cut -d ' ' -f 1)"
+    [ -n "$download_sum" ] || die "$download_file: no SHA-256"
+    if [ -n "$download_upstream" ] && [ "$download_upstream" != "$download_sum" ]; then
+        die "$download_url: SHA-256 $download_sum, but upstream lists $download_upstream"
+    fi
+    echo "$download_sum"
+}
+
+# github PATH: GitHub's API
+github() {
+    if [ -n "$github_token" ]; then
+        fetch "https://api.github.com/$1" --header "Authorization: Bearer $github_token"
+    else
+        fetch "https://api.github.com/$1"
+    fi
+}
+
+# The newest of the versions on stdin, X.Y.Z with or without a "v", leaving
+# out other tags, such as karakeep's v.0.4.0, and prereleases.
+newest() {
+    grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | sed 's/^v//' | sort -V | tail -n 1
+}
+
+# github_latest REPO: the newest release's version
+github_latest() {
+    github "repos/$1/releases?per_page=100" |
+        jq -r '.[] | select((.draft or .prerelease) | not) | .tag_name' |
+        newest
+}
+
+# github_digest REPO TAG ASSET: the SHA-256 GitHub lists for a release asset,
+# if any
+github_digest() {
+    github "repos/$1/releases/tags/$2" |
+        jq -r --arg name "$3" '.assets[] | select(.name == $name) | .digest // empty' |
+        sed 's/^sha256://'
+}
+
+# newer A B: whether B is a newer version than A
+newer() {
+    [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n 1)" = "$2" ]
+}
+
+# pick LATEST: sets $new to the version to update to, the one given as
+# APP=VERSION, or else LATEST if it is newer; fails if there is none.
+pick() {
+    [ -n "$1" ] || die "found no release upstream"
+    if [ -n "$override" ]; then
+        new="$override"
+    elif newer "$cur_ver" "$1"; then
+        new="$1"
+    else
+        return 1
+    fi
+    log "updating to $new"
+}
+
+# The edits below each replace exactly one line of FILE, or fail.
+
+# set_var FILE NAME VALUE: the line NAME=...
+set_var() {
+    awk -v name="$2" -v value="$3" '
+        index($0, name "=") == 1 { print name "=" value; n++; next }
+        { print }
+        END { exit n != 1 }
+    ' "$1" > "$tmp/edit" || die "$1: no single $2= line"
+    cat "$tmp/edit" > "$1"
+}
+
+# set_pin FILE KEY SHA256: the line "KEY SHA256", in a list such as
+# victorialogs's archives, where KEY is as written, $version and all
+set_pin() {
+    awk -v key="$2" -v sum="$3" '
+        $1 == key && NF == 2 { print key " " sum; n++; next }
+        { print }
+        END { exit n != 1 }
+    ' "$1" > "$tmp/edit" || die "$1: no single line for $2"
+    cat "$tmp/edit" > "$1"
+}
+
+# get_var FILE NAME: the value of the line NAME=...
+get_var() {
+    sed -n "s/^$2=//p" "$1"
+}
+
+# expand KEY: KEY with the version in place of $version and ${version}
+expand() {
+    printf '%s\n' "$1" | sed -e "s/\${version}/$new/g" -e "s/\$version/$new/g"
+}
+
+# unpack ARCHIVE TAR-OPTION: into src/, as mkosi.sync does, which then skips
+# the download, for update-requirements to read
+unpack() {
+    mkdir "$tmp/src"
+    tar --extract "$2" --file="$1" --directory="$tmp/src" --strip-components=1
+    echo "$new" > "$tmp/src/.mkosi-version"
+    rm -rf src
+    mv "$tmp/src" src
+}
+
+# github_app REPO TAG-PREFIX ASSET: one release asset, pinned as sha256=;
+# @V@ in ASSET stands for the version
+github_app() {
+    latest="$(github_latest "$1")"
+    pick "$latest" || return 0
+    tag="$2$new"
+    asset="$(echo "$3" | sed "s/@V@/$new/g")"
+    digest="$(github_digest "$1" "$tag" "$asset")"
+    sum="$(download "https://github.com/$1/releases/download/$tag/$asset" "$tmp/$asset" "$digest")"
+    set_var mkosi.sync sha256 "$sum"
+}
+
+# victoria REPO KEY...: release archives, checked against upstream's checksum
+# files, pinned in mkosi.sync's list under KEY
+victoria() {
+    repo="$1"
+    shift
+    latest="$(github_latest "$repo")"
+    pick "$latest" || return 0
+    base="https://github.com/$repo/releases/download/v$new"
+    for key; do
+        archive="$(expand "$key")"
+        upstream="$(fetch "$base/${archive%.tar.gz}_checksums.txt" | awk -v name="$archive" '$2 == name { print $1 }')"
+        [ -n "$upstream" ] || die "$archive: not in upstream's checksums"
+        sum="$(download "$base/$archive" "$tmp/$archive" "$upstream")"
+        set_pin mkosi.sync "$key" "$sum"
+    done
+}
+
+update_homebox() {
+    github_app sysadminsmedia/homebox v homebox_Linux_x86_64.tar.gz
+}
+
+update_jellyfin() {
+    repository=https://repo.jellyfin.org/debian
+    # "PACKAGE VERSION FILENAME SHA256" for each package of the repository's
+    # index for trixie
+    fetch "$repository/dists/trixie/main/binary-amd64/Packages" | awk -v RS= -F '\n' '{
+        split("", field)
+        for (i = 1; i <= NF; i++) {
+            name = $i; sub(/:.*/, "", name)
+            value = $i; sub(/^[^:]*: /, "", value)
+            field[name] = value
+        }
+        print field["Package"], field["Version"], field["Filename"], field["SHA256"]
+    }' > "$tmp/index"
+    package_latest() {
+        awk -v package="$1" '$1 == package { print $2 }' "$tmp/index" | sort -V | tail -n 1
+    }
+    # jellyfin_pin KEY: download the package that mkosi.sync's list has
+    # under KEY, as KEY now expands, checked against the index, and pin it
+    jellyfin_pin() {
+        path="$(expand "$1" | sed "s/\${ffmpeg_version}/$ffmpeg/g")"
+        upstream="$(awk -v file="pool/main/$path" '$3 == file { print $4 }' "$tmp/index")"
+        [ -n "$upstream" ] || die "$path: not in the repository's index"
+        sum="$(download "$repository/pool/main/$path" "$tmp/package.deb" "$upstream")"
+        set_pin mkosi.sync "$1" "$sum"
+    }
+
+    ffmpeg="$(get_var mkosi.sync ffmpeg_version)"
+    latest="$(package_latest jellyfin-server)"
+    if pick "${latest%+deb13}"; then
+        # shellcheck disable=SC2016 # mkosi.sync's keys, $version and all
+        for key in 'j/jellyfin/jellyfin-server_${version}+deb13_amd64.deb' \
+            'j/jellyfin/jellyfin-web_${version}+deb13_all.deb'; do
+            jellyfin_pin "$key"
+        done
+    fi
+
+    latest="$(package_latest jellyfin-ffmpeg8)"
+    latest="${latest%-trixie}"
+    [ -n "$latest" ] || die "found no jellyfin-ffmpeg8 upstream"
+    if newer "$ffmpeg" "$latest"; then
+        log "updating jellyfin-ffmpeg8 to $latest"
+        ffmpeg="$latest"
+        # shellcheck disable=SC2016 # mkosi.sync's key, $ffmpeg_version and all
+        jellyfin_pin 'j/jellyfin-ffmpeg/jellyfin-ffmpeg8_${ffmpeg_version}-trixie_amd64.deb'
+        set_var mkosi.sync ffmpeg_version "$ffmpeg"
+    fi
+}
+
+update_karakeep() {
+    latest="$(github_latest karakeep-app/karakeep)"
+    pick "$latest" || return 0
+
+    registry=https://ghcr.io/v2/karakeep-app/karakeep
+    token="$(fetch "https://ghcr.io/token?scope=repository:karakeep-app/karakeep:pull" | jq -r .token)"
+    auth="Authorization: Bearer $token"
+    accept="Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json"
+    image="$(fetch "$registry/manifests/$new" --header "$auth" --header "$accept" |
+        jq -r '.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64") | .digest')"
+    [ -n "$image" ] || die "ghcr.io/karakeep-app/karakeep:$new has no linux/amd64 image"
+    # blob DIGEST FILE [PATH]: a blob, or a manifest, checked against its digest
+    blob() {
+        download "$registry/${3:-blobs}/$1" "$2" "${1#sha256:}" --header "$auth" --header "$accept" > /dev/null
+    }
+    blob "$image" "$tmp/manifest" manifests
+    blob "$(jq -r .config.digest "$tmp/manifest")" "$tmp/config"
+    # Each layer's digest, with the step of the Dockerfile that made it.
+    jq -r --slurpfile manifest "$tmp/manifest" '
+        $manifest[0].layers as $layers
+        | [.history[] | select(.empty_layer | not) | .created_by] as $steps
+        | if ($steps | length) != ($layers | length) then error("the history does not match the layers") else . end
+        | range($steps | length) | "\($layers[.].digest | ltrimstr("sha256:")) \($steps[.])"
+    ' "$tmp/config" > "$tmp/steps"
+    # The layers mkosi.sync takes, in its order: the steps that copy the
+    # build in, each matched by an extended regular expression.
+    : > "$tmp/layers"
+    for step in \
+        'COPY .*/\.next/standalone \./ ' \
+        'COPY .*/apps/web/public \./apps/web/public ' \
+        'COPY .*/apps/web/\.next/static \./apps/web/\.next/static ' \
+        'COPY /db_migrations /db_migrations ' \
+        'COPY .*/workers /app/apps/workers ' \
+        'COPY .*/monolith /usr/local/bin/monolith '; do
+        layers="$(grep -E "^[0-9a-f]+ $step" "$tmp/steps" | cut -d ' ' -f 1)"
+        [ "$(echo "$layers" | grep -c .)" = 1 ] ||
+            die "no single layer from the step $step; has upstream's Dockerfile changed?"
+        echo "$layers" >> "$tmp/layers"
+    done
+
+    # The Node.js upstream's image has.
+    node="$(jq -r '.config.Env[] | select(startswith("NODE_VERSION=")) | ltrimstr("NODE_VERSION=")' "$tmp/config")"
+    [ -n "$node" ] || die "found no NODE_VERSION in the image"
+    if [ "$node" != "$(get_var mkosi.sync node_version)" ] || [ -n "$override" ]; then
+        tarball="node-v$node-linux-x64.tar.xz"
+        upstream="$(fetch "https://nodejs.org/dist/v$node/SHASUMS256.txt" | awk -v name="$tarball" '$2 == name { print $1 }')"
+        [ -n "$upstream" ] || die "$tarball: not in Node.js's SHASUMS256.txt"
+        node_sum="$(download "https://nodejs.org/dist/v$node/$tarball" "$tmp/$tarball" "$upstream")"
+        set_var mkosi.sync node_version "$node"
+        set_var mkosi.sync node_sha256 "$node_sum"
+    fi
+
+    # The Meilisearch upstream's compose file pins.
+    meilisearch="$(fetch "https://raw.githubusercontent.com/karakeep-app/karakeep/v$new/docker/docker-compose.yml" |
+        sed -n 's|.*image: *getmeili/meilisearch:v\([0-9.]*\).*|\1|p')"
+    [ -n "$meilisearch" ] || die "found no Meilisearch in upstream's docker-compose.yml"
+    if [ "$meilisearch" != "$(get_var mkosi.sync meilisearch_version)" ] || [ -n "$override" ]; then
+        digest="$(github_digest meilisearch/meilisearch "v$meilisearch" meilisearch-linux-amd64)"
+        meilisearch_sum="$(download "https://github.com/meilisearch/meilisearch/releases/download/v$meilisearch/meilisearch-linux-amd64" "$tmp/meilisearch" "$digest")"
+        set_var mkosi.sync meilisearch_version "$meilisearch"
+        set_var mkosi.sync meilisearch_sha256 "$meilisearch_sum"
+    fi
+
+    awk -v image="${image#sha256:}" -v layers="$tmp/layers" '
+        /^# sha256:[0-9a-f]+,$/ { print "# sha256:" image ","; images++; next }
+        /^layers="$/ { print; while ((getline layer < layers) > 0) print layer; skip = 1; lists++; next }
+        skip && /^"$/ { skip = 0 }
+        !skip { print }
+        END { exit images != 1 || lists != 1 }
+    ' mkosi.sync > "$tmp/edit" || die "mkosi.sync: no single image digest and layers list"
+    cat "$tmp/edit" > mkosi.sync
+}
+
+update_miniflux() {
+    github_app miniflux/v2 "" miniflux_@V@_amd64.deb
+}
+
+update_netbox() {
+    latest="$(github_latest netbox-community/netbox)"
+    pick "$latest" || return 0
+    # GitHub generates the archive, without a checksum or signature.
+    archive="v$new.tar.gz"
+    sum="$(download "https://github.com/netbox-community/netbox/archive/refs/tags/$archive" "$tmp/$archive")"
+    set_var mkosi.sync sha256 "$sum"
+    unpack "$tmp/$archive" --gunzip
+    ./update-requirements
+}
+
+update_nextcloud() {
+    base=https://download.nextcloud.com/server/releases
+    latest="$(fetch "$base/" |
+        sed -n 's/.*"nextcloud-\([0-9]*\.[0-9]*\.[0-9]*\)\.tar\.bz2".*/\1/p' |
+        awk -F . -v major="${cur_ver%%.*}" '$1 <= major + 1' |
+        newest)"
+    pick "$latest" || return 0
+    archive="nextcloud-$new.tar.bz2"
+    upstream="$(fetch "$base/$archive.sha256" | awk -v name="$archive" '$2 == name { print $1 }')"
+    sum="$(download "$base/$archive" "$tmp/$archive" "$upstream")"
+    fetch "$base/$archive.asc" --output "$tmp/$archive.asc"
+    sqv --keyring nextcloud.asc "$tmp/$archive.asc" "$tmp/$archive" > /dev/null ||
+        die "$archive: no valid signature by nextcloud.asc"
+    set_var mkosi.sync sha256 "$sum"
+}
+
+update_paperless() {
+    latest="$(github_latest paperless-ngx/paperless-ngx)"
+    pick "$latest" || return 0
+    archive="paperless-ngx-v$new.tar.xz"
+    digest="$(github_digest paperless-ngx/paperless-ngx "v$new" "$archive")"
+    sum="$(download "https://github.com/paperless-ngx/paperless-ngx/releases/download/v$new/$archive" "$tmp/$archive" "$digest")"
+    set_var mkosi.sync sha256 "$sum"
+    unpack "$tmp/$archive" --xz
+    ./update-requirements
+}
+
+update_soju() {
+    codeberg=https://codeberg.org/api/v1/repos/emersion
+    latest="$(fetch "$codeberg/soju/releases?limit=50" |
+        jq -r '.[] | select((.draft or .prerelease) | not) | .tag_name' |
+        newest)"
+    if pick "$latest"; then
+        archive="soju-$new.tar.gz"
+        base="https://codeberg.org/emersion/soju/releases/download/v$new"
+        sum="$(download "$base/$archive" "$tmp/$archive")"
+        fetch "$base/$archive.sig" --output "$tmp/$archive.sig"
+        sqop verify "$tmp/$archive.sig" emersion.gpg < "$tmp/$archive" > /dev/null ||
+            die "$archive: no valid signature by emersion.gpg"
+        set_var mkosi.sync sha256 "$sum"
+    fi
+
+    # gamja has only published prereleases so far, so it takes the newest
+    # release of any kind, newest first as Codeberg lists them: version order
+    # puts 1.0.0 before 1.0.0-beta.11.
+    gamja="$(fetch "$codeberg/gamja/releases?limit=1" | jq -r '.[0].tag_name // empty' | sed 's/^v//')"
+    [ -n "$gamja" ] || die "found no gamja release upstream"
+    if [ "$gamja" != "$(get_var mkosi.sync gamja_version)" ]; then
+        log "updating gamja to $gamja"
+        archive="gamja-$gamja.tar.gz"
+        # Unsigned, without checksums.
+        sum="$(download "https://codeberg.org/emersion/gamja/releases/download/v$gamja/$archive" "$tmp/$archive")"
+        set_var mkosi.sync gamja_version "$gamja"
+        set_var mkosi.sync gamja_sha256 "$sum"
+    fi
+}
+
+update_victorialogs() {
+    # shellcheck disable=SC2016 # mkosi.sync's keys, $version and all
+    victoria VictoriaMetrics/VictoriaLogs \
+        'victoria-logs-linux-amd64-v$version.tar.gz' \
+        'vlutils-linux-amd64-v$version.tar.gz'
+}
+
+update_victoriametrics() {
+    # shellcheck disable=SC2016 # mkosi.sync's keys, $version and all
+    victoria VictoriaMetrics/VictoriaMetrics \
+        'victoria-metrics-linux-amd64-v$version.tar.gz' \
+        'vmutils-linux-amd64-v$version.tar.gz'
+}
+
+update_wakapi() {
+    github_app muety/wakapi "" wakapi_linux_amd64.zip
+}
+
+# Run in the app's profile directory: update it, and set its version, from
+# what changed.
+update() {
+    cur="$(cat mkosi.version)"
+    cur_ver="${cur%-*}"
+    cur_rev="${cur##*-}"
+    new="$cur_ver"
+    for file in mkosi.sync requirements.lock; do
+        if [ -e "$file" ]; then
+            cp "$file" "$tmp/$file.orig"
+        fi
+    done
+
+    "update_$app"
+
+    changed=
+    for file in mkosi.sync requirements.lock; do
+        if [ -e "$file" ] && ! cmp -s "$file" "$tmp/$file.orig"; then
+            changed=1
+        fi
+    done
+    if [ "$new" != "$cur_ver" ]; then
+        version="$new-1"
+    elif [ -n "$changed" ]; then
+        version="$cur_ver-$((cur_rev + 1))"
+    else
+        log "up to date at $cur"
+        return
+    fi
+    echo "$version" > mkosi.version
+    log "updated from $cur to $version"
+}
+
+if [ $# = 0 ]; then
+    for file in mkosi.profiles/*/mkosi.version; do
+        set -- "$@" "$(basename "$(dirname "$file")")"
+    done
+fi
+
+updated=
+failed=
+for arg; do
+    app="${arg%%=*}"
+    override=
+    if [ "$arg" != "$app" ]; then
+        override="${arg#*=}"
+    fi
+    if [ ! -e "mkosi.profiles/$app/mkosi.version" ] || ! command -v "update_$app" > /dev/null; then
+        log "not an app this can update"
+        failed="$failed $app"
+        continue
+    fi
+    before="$(cat "mkosi.profiles/$app/mkosi.version")"
+    # In a subshell, so that a failure leaves the other apps to go on; set -e
+    # does not hold in one that is a condition, hence the status.
+    set +e
+    (
+        set -e
+        cd "mkosi.profiles/$app"
+        tmp="$(mktemp -d)"
+        trap 'rm -rf "$tmp"' EXIT
+        update
+    )
+    status=$?
+    set -e
+    if [ "$status" != 0 ]; then
+        failed="$failed $app"
+    elif [ "$(cat "mkosi.profiles/$app/mkosi.version")" != "$before" ]; then
+        updated="$updated $app"
+    fi
+done
+
+echo
+echo "Updated:${updated:- none}"
+if [ -n "$failed" ]; then
+    echo "Failed:$failed"
+    exit 1
+fi
+if [ -n "$updated" ]; then
+    echo "Build and try each, with mkosi -f --profile=<app> build, then commit."
+fi

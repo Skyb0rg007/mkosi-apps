@@ -52,8 +52,8 @@ For PostgreSQL instead of SQLite, set `PAPERLESS_DBENGINE=postgresql` and its
 - `requirements.lock` is upstream's `requirements.txt`, which covers every
   platform, resolved for the image's Python with `update-requirements`. It
   leaves out the drivers that are only published as source for Python 3.13,
-  mysqlclient and psycopg-c; psycopg uses `libpq` directly instead. On an
-  upgrade, run `update-requirements` after `mkosi.sync` has unpacked the new
-  release.
+  mysqlclient and psycopg-c; psycopg uses `libpq` directly instead. `bin/update-apps`
+  runs `update-requirements` on an upgrade; by hand, run it after `mkosi.sync`
+  has unpacked the new release.
 - The build replaces Debian's ImageMagick policy with upstream's, which allows
   reading PDFs for thumbnails.

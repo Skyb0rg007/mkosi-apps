@@ -41,5 +41,5 @@ image's virtualenv, which this image does not do.
   them, resolved with `update-requirements` as of the release date, wheels only
   and hashed (see [Source builds](../../docs/design.md#source-builds)). It uses
   psycopg's binary wheel instead of its C build, which is only published as
-  source. On an upgrade, run `update-requirements` after `mkosi.sync` has
-  unpacked the new release.
+  source. `bin/update-apps` runs `update-requirements` on an upgrade; by hand,
+  run it after `mkosi.sync` has unpacked the new release.
