@@ -179,6 +179,68 @@ victoria() {
     done
 }
 
+# image_layers REGISTRY TOKEN-URL TAG STEP...: of the container image TAG for
+# linux/amd64, in REGISTRY (https://<host>/v2/<repository>), with a pull token
+# from TOKEN-URL, sets $image to the image's digest, and writes to $tmp/layers
+# the digests of the layers that STEP... made, the Dockerfile steps whose
+# layers mkosi.sync takes, in its order, each an extended regular expression;
+# leaves the image's configuration in $tmp/config.
+image_layers() {
+    registry="$1"
+    token="$(fetch "$2" | jq -r .token)"
+    auth="Authorization: Bearer $token"
+    accept="Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json"
+    image="$(fetch "$registry/manifests/$3" --header "$auth" --header "$accept" |
+        jq -r '.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64") | .digest')"
+    [ -n "$image" ] || die "$registry:$3 has no linux/amd64 image"
+    shift 3
+    # blob DIGEST FILE [PATH]: a blob, or a manifest, checked against its digest
+    blob() {
+        download "$registry/${3:-blobs}/$1" "$2" "${1#sha256:}" --header "$auth" --header "$accept" > /dev/null
+    }
+    blob "$image" "$tmp/manifest" manifests
+    blob "$(jq -r .config.digest "$tmp/manifest")" "$tmp/config"
+    # Each layer's digest, with the step of the Dockerfile that made it.
+    jq -r --slurpfile manifest "$tmp/manifest" '
+        $manifest[0].layers as $layers
+        | [.history[] | select(.empty_layer | not) | .created_by | gsub("\\s+"; " ")] as $steps
+        | if ($steps | length) != ($layers | length) then error("the history does not match the layers") else . end
+        | range($steps | length) | "\($layers[.].digest | ltrimstr("sha256:")) \($steps[.])"
+    ' "$tmp/config" > "$tmp/steps"
+    : > "$tmp/layers"
+    for step; do
+        layers="$(grep -E "^[0-9a-f]+ $step" "$tmp/steps" | cut -d ' ' -f 1)"
+        [ "$(echo "$layers" | grep -c .)" = 1 ] ||
+            die "no single layer from the step $step; has upstream's Dockerfile changed?"
+        echo "$layers" >> "$tmp/layers"
+    done
+}
+
+# pin_layers: image_layers's image digest and layers, in mkosi.sync's comment
+# "# sha256:<image>," and its list layers="..."
+pin_layers() {
+    awk -v image="${image#sha256:}" -v layers="$tmp/layers" '
+        /^# sha256:[0-9a-f]+,$/ { print "# sha256:" image ","; images++; next }
+        /^layers="$/ { print; while ((getline layer < layers) > 0) print layer; skip = 1; lists++; next }
+        skip && /^"$/ { skip = 0 }
+        !skip { print }
+        END { exit images != 1 || lists != 1 }
+    ' mkosi.sync > "$tmp/edit" || die "mkosi.sync: no single image digest and layers list"
+    cat "$tmp/edit" > mkosi.sync
+}
+
+update_cdash() {
+    latest="$(github_latest Kitware/CDash)"
+    pick "$latest" || return 0
+    image_layers https://registry-1.docker.io/v2/kitware/cdash \
+        "https://auth.docker.io/token?service=registry.docker.io&scope=repository:kitware/cdash:pull" "v$new" \
+        'COPY --chown=www-data:www-data \. /cdash ' \
+        'RUN .* composer install ' \
+        'RUN .* php artisan graphiql:download-assets ' \
+        'RUN .* npm run prod '
+    pin_layers
+}
+
 update_homebox() {
     github_app sysadminsmedia/homebox v homebox_Linux_x86_64.tar.gz
 }
@@ -235,41 +297,14 @@ update_karakeep() {
     latest="$(github_latest karakeep-app/karakeep)"
     pick "$latest" || return 0
 
-    registry=https://ghcr.io/v2/karakeep-app/karakeep
-    token="$(fetch "https://ghcr.io/token?scope=repository:karakeep-app/karakeep:pull" | jq -r .token)"
-    auth="Authorization: Bearer $token"
-    accept="Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json"
-    image="$(fetch "$registry/manifests/$new" --header "$auth" --header "$accept" |
-        jq -r '.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64") | .digest')"
-    [ -n "$image" ] || die "ghcr.io/karakeep-app/karakeep:$new has no linux/amd64 image"
-    # blob DIGEST FILE [PATH]: a blob, or a manifest, checked against its digest
-    blob() {
-        download "$registry/${3:-blobs}/$1" "$2" "${1#sha256:}" --header "$auth" --header "$accept" > /dev/null
-    }
-    blob "$image" "$tmp/manifest" manifests
-    blob "$(jq -r .config.digest "$tmp/manifest")" "$tmp/config"
-    # Each layer's digest, with the step of the Dockerfile that made it.
-    jq -r --slurpfile manifest "$tmp/manifest" '
-        $manifest[0].layers as $layers
-        | [.history[] | select(.empty_layer | not) | .created_by] as $steps
-        | if ($steps | length) != ($layers | length) then error("the history does not match the layers") else . end
-        | range($steps | length) | "\($layers[.].digest | ltrimstr("sha256:")) \($steps[.])"
-    ' "$tmp/config" > "$tmp/steps"
-    # The layers mkosi.sync takes, in its order: the steps that copy the
-    # build in, each matched by an extended regular expression.
-    : > "$tmp/layers"
-    for step in \
+    image_layers https://ghcr.io/v2/karakeep-app/karakeep \
+        "https://ghcr.io/token?scope=repository:karakeep-app/karakeep:pull" "$new" \
         'COPY .*/\.next/standalone \./ ' \
         'COPY .*/apps/web/public \./apps/web/public ' \
         'COPY .*/apps/web/\.next/static \./apps/web/\.next/static ' \
         'COPY /db_migrations /db_migrations ' \
         'COPY .*/workers /app/apps/workers ' \
-        'COPY .*/monolith /usr/local/bin/monolith '; do
-        layers="$(grep -E "^[0-9a-f]+ $step" "$tmp/steps" | cut -d ' ' -f 1)"
-        [ "$(echo "$layers" | grep -c .)" = 1 ] ||
-            die "no single layer from the step $step; has upstream's Dockerfile changed?"
-        echo "$layers" >> "$tmp/layers"
-    done
+        'COPY .*/monolith /usr/local/bin/monolith '
 
     # The Node.js upstream's image has.
     node="$(jq -r '.config.Env[] | select(startswith("NODE_VERSION=")) | ltrimstr("NODE_VERSION=")' "$tmp/config")"
@@ -294,14 +329,7 @@ update_karakeep() {
         set_var mkosi.sync meilisearch_sha256 "$meilisearch_sum"
     fi
 
-    awk -v image="${image#sha256:}" -v layers="$tmp/layers" '
-        /^# sha256:[0-9a-f]+,$/ { print "# sha256:" image ","; images++; next }
-        /^layers="$/ { print; while ((getline layer < layers) > 0) print layer; skip = 1; lists++; next }
-        skip && /^"$/ { skip = 0 }
-        !skip { print }
-        END { exit images != 1 || lists != 1 }
-    ' mkosi.sync > "$tmp/edit" || die "mkosi.sync: no single image digest and layers list"
-    cat "$tmp/edit" > mkosi.sync
+    pin_layers
 }
 
 update_miniflux() {

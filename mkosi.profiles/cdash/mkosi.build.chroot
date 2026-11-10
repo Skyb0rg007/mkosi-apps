@@ -1,0 +1,28 @@
+#!/bin/sh
+# Install what mkosi.sync downloaded: CDash into /usr/share/cdash, with modes
+# that its users can read whatever the checkout's umask. /usr is read-only on
+# the machines, so what Laravel writes into its tree goes to /var.
+set -eu
+
+# mkosi passes the invoking shell's umask on; a restrictive one must not
+# end up in the images' modes.
+umask 022
+
+dist="$SRCDIR/mkosi.profiles/cdash/dist"
+dest="$DESTDIR/usr/share/cdash"
+
+mkdir -p "$DESTDIR/usr/share"
+cp -R "$dist/cdash" "$dest"
+chmod -R u+rwX,go+rX,go-w "$dest"
+
+# Submissions, sessions, compiled views and logs.
+ln -s /var/lib/cdash/storage "$dest/storage"
+# Laravel's caches of the packages, services and GraphQL schema, which it
+# rebuilds when they are missing: drop the image's, which only know the tree
+# as it was built.
+rm -r "$dest/bootstrap/cache"
+ln -s /var/cache/cdash "$dest/bootstrap/cache"
+
+# What php artisan generate-version writes, without git, and the web client
+# shows.
+printf 'v%s' "$(cat "$dist/.mkosi-version")" > "$dest/public/VERSION"

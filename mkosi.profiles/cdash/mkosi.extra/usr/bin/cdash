@@ -1,0 +1,23 @@
+#!/bin/sh
+# shellcheck disable=SC1091 # files of the machine, not of the checkout
+# CDash's artisan, as the cdash user, with CDash's settings, e.g.:
+#
+#     cdash user:save --email=admin@example.com --password=… --admin=1
+#     cdash migrate:status
+set -eu
+
+if [ "$(id -u)" != 0 ]; then
+    echo "cdash: run as root, to read /var/lib/cdash-secret/" >&2
+    exit 1
+fi
+
+set -a
+. /usr/lib/cdash/cdash.env
+. /var/lib/cdash-secret/secret.env
+if [ -e /etc/cdash.conf ]; then
+    . /etc/cdash.conf
+fi
+set +a
+
+cd /usr/share/cdash
+exec runuser -u cdash -- php artisan "$@"

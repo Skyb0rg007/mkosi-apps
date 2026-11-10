@@ -1,0 +1,9 @@
+#!/bin/sh
+# Drop Debian's default PHP-FPM pool, for www-data; CDash has its own.
+set -e
+
+# mkosi passes the invoking shell's umask on; a restrictive one must not
+# end up in the images' modes.
+umask 022
+
+rm /etc/php/8.4/fpm/pool.d/www.conf

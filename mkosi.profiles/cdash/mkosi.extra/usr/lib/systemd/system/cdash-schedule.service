@@ -1,0 +1,15 @@
+[Unit]
+Description=CDash scheduled jobs
+After=cdash-setup.service
+Requisite=cdash-setup.service
+
+[Service]
+Type=oneshot
+User=cdash
+WorkingDirectory=/usr/share/cdash
+EnvironmentFile=/usr/lib/cdash/cdash.env
+EnvironmentFile=/var/lib/cdash-secret/secret.env
+EnvironmentFile=-/etc/cdash.conf
+# Pruning old builds, files and tokens, hourly and daily, which it queues for
+# the worker.
+ExecStart=php artisan schedule:run

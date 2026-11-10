@@ -1,0 +1,19 @@
+[Unit]
+Description=CDash queue worker
+Documentation=https://github.com/Kitware/CDash/blob/master/docs/submissions.md
+After=cdash-setup.service
+
+[Service]
+User=cdash
+WorkingDirectory=/usr/share/cdash
+EnvironmentFile=/usr/lib/cdash/cdash.env
+EnvironmentFile=/var/lib/cdash-secret/secret.env
+EnvironmentFile=-/etc/cdash.conf
+Environment=WORKER_MEMORY_LIMIT=256
+# Processes submissions. As in upstream's container image, it exits after an
+# hour, to free what it holds, and starts again.
+ExecStart=php -d memory_limit=-1 artisan queue:work --max-time=3600 --memory=${WORKER_MEMORY_LIMIT}
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

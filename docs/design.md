@@ -183,8 +183,8 @@ are built from source with Debian's setuptools.
 
 Apps released as built artifacts only are installed from those: release
 binaries (homebox, wakapi, VictoriaMetrics, Woodpecker), upstream's Debian packages
-(jellyfin, miniflux), and for karakeep the layers of upstream's container
-image that hold the app, by digest.
+(jellyfin, miniflux), and for karakeep and CDash the layers of upstream's
+container image that hold the app, by digest.
 
 ## Host setup details
 

@@ -1,0 +1,50 @@
+# CDash, a Laravel app, after Laravel's nginx example and the .htaccess of
+# CDash's public/, in plain HTTP on port 80: TLS is up to a proxy in front.
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
+    root /usr/share/cdash/public;
+    index index.php;
+    server_tokens off;
+    charset utf-8;
+
+    # CTest uploads whole build and test logs, and files, in one request;
+    # upstream's Apache sets no limit either.
+    client_max_body_size 0;
+
+    add_header X-Content-Type-Options "nosniff";
+    add_header Content-Security-Policy "default-src 'self' 'unsafe-inline' 'unsafe-eval'; font-src 'self' data:; img-src 'self' data:";
+
+    gzip on;
+    gzip_types text/css text/javascript application/javascript application/json image/svg+xml text/xml application/xml;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~* \.(css|js|svg|gif|png)$ {
+        try_files $uri /index.php?$query_string;
+        add_header Cache-Control "max-age=31536000";
+        add_header X-Content-Type-Options "nosniff";
+        add_header Content-Security-Policy "default-src 'self' 'unsafe-inline' 'unsafe-eval'; font-src 'self' data:; img-src 'self' data:";
+    }
+
+    location = /favicon.ico { access_log off; log_not_found off; }
+    location = /robots.txt  { access_log off; log_not_found off; }
+
+    error_page 404 /index.php;
+
+    location = /index.php {
+        fastcgi_pass unix:/run/php/cdash.sock;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
+        fastcgi_hide_header X-Powered-By;
+        # Submissions and their processing take a while.
+        fastcgi_read_timeout 300s;
+    }
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+}

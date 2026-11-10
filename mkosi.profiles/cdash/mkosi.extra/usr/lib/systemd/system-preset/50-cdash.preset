@@ -1,0 +1,5 @@
+enable cdash-setup.service
+enable cdash-worker.service
+enable cdash-schedule.timer
+enable php8.4-fpm.service
+enable nginx.service

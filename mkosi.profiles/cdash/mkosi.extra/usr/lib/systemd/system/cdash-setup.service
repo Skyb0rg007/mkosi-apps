@@ -1,0 +1,30 @@
+[Unit]
+Description=Set up CDash's storage and database
+Documentation=https://github.com/Kitware/CDash/blob/master/install.sh
+Requires=postgresql-setup@cdash.service cdash-secret.service
+After=postgresql-setup@cdash.service cdash-secret.service
+Before=php8.4-fpm.service cdash-worker.service cdash-schedule.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=cdash
+StateDirectory=cdash
+CacheDirectory=cdash
+WorkingDirectory=/usr/share/cdash
+EnvironmentFile=/usr/lib/cdash/cdash.env
+EnvironmentFile=/var/lib/cdash-secret/secret.env
+EnvironmentFile=-/etc/cdash.conf
+# What upstream's install.sh does as its container starts, but for the steps
+# its image build did, and caching the configuration and routes: those would
+# keep /etc/cdash.conf's old settings until this ran again.
+ExecStart=mkdir -p /var/lib/cdash/storage
+ExecStart=php artisan storage:mkdirs
+ExecStart=php artisan migrate --force
+ExecStart=php artisan view:cache
+ExecStart=php artisan lighthouse:cache
+# Migrations of a large database take a while.
+TimeoutStartSec=infinity
+
+[Install]
+RequiredBy=php8.4-fpm.service cdash-worker.service

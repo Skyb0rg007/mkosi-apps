@@ -1,0 +1,65 @@
+#!/bin/sh
+# Download CDash as upstream builds it. Upstream publishes releases only as git
+# tags and a container image, kitware/cdash, whose build installs the PHP
+# dependencies with composer and builds the web client with npm. This takes
+# the layers holding /cdash from that image, by digest, and unpacks the app
+# into dist/, which the build script installs; PHP comes from Debian.
+set -eu
+
+# mkosi passes the invoking shell's umask on; a restrictive one must not
+# end up in the images' modes.
+umask 022
+
+# Upstream version: mkosi.version without its "-<revision>" suffix. The layer
+# digests belong to that version, so update them together.
+version="$(jq -r .ImageVersion "$MKOSI_CONFIG")"
+version="${version%-*}"
+repository=kitware/cdash
+# Of docker.io/kitware/cdash:v$version for linux/amd64, image
+# sha256:44ab98507044a425836d7522e188afd30f0461bfa8bd40b3122d3b036613dceb,
+# the layers that upstream's Dockerfile builds /cdash in, in order: the source,
+# composer's vendor/ (and npm's node_modules/), GraphiQL's assets, and the web
+# client in public/. A layer's digest is its checksum.
+layers="
+fa933d56eb5afd7a1340a9afaaa9c843d5f70377b61692ad25830f8d0a869e15
+13ba864635098773e500a5596ca3bc808b07c430209e39fcebae358ceec5aa6b
+ac7af193ebab8bb8c21d5599b94f53dbd8b6428101dfb25a3d55892b9ed1c08b
+ad2d17159bb2d6fb4ba46be34b99cbf2de4099c606d2f57ac455fd6b5263c088
+"
+
+# mkosi runs this script as /work/sync, so paths must come from $SRCDIR.
+TARGET="$SRCDIR/mkosi.profiles/cdash/dist"
+
+if [ "$(cat "$TARGET/.mkosi-version" 2>/dev/null)" = "$version" ]; then
+    echo "cdash: $TARGET is $version, skipping download"
+    exit
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+mkdir "$tmpdir/dist" "$tmpdir/layers"
+
+token="$(curl --fail --silent "https://auth.docker.io/token?service=registry.docker.io&scope=repository:$repository:pull" | jq -r .token)"
+for digest in $layers; do
+    curl --fail --location --output "$tmpdir/layer" --header "Authorization: Bearer $token" \
+        "https://registry-1.docker.io/v2/$repository/blobs/sha256:$digest"
+    printf '%s  %s\n' "$digest" "$tmpdir/layer" | sha256sum --check --status
+    # Plain additions, no whiteouts.
+    tar --extract --gunzip --file="$tmpdir/layer" --directory="$tmpdir/layers" cdash
+done
+
+# What runs: no node_modules/, which only built the web client, and none of
+# the tests, the git metadata or the development tooling.
+cdash="$tmpdir/layers/cdash"
+if [ "$(sed -n "s/^ *'version' => '\(.*\)',$/\1/p" "$cdash/config/cdash.php")" != "$version" ]; then
+    echo "cdash: the layers are not CDash $version" >&2
+    exit 1
+fi
+mkdir "$tmpdir/dist/cdash"
+for path in app artisan bootstrap composer.json composer.lock config database graphql lang LICENSE public resources routes vendor; do
+    mv "$cdash/$path" "$tmpdir/dist/cdash/"
+done
+
+echo "$version" > "$tmpdir/dist/.mkosi-version"
+rm -rf "$TARGET"
+mv "$tmpdir/dist" "$TARGET"

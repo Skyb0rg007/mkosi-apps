@@ -6,6 +6,7 @@ run as its own `systemd-nspawn` container, without root.
 
 | App | |
 |---|---|
+| [cdash](mkosi.profiles/cdash/README.md) | CDash test dashboard, with PostgreSQL |
 | [homebox](mkosi.profiles/homebox/README.md) | Homebox inventory manager |
 | [jellyfin](mkosi.profiles/jellyfin/README.md) | Jellyfin media server |
 | [karakeep](mkosi.profiles/karakeep/README.md) | Karakeep bookmark manager, with Meilisearch and headless Chromium |
